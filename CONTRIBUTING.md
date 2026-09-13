@@ -1,0 +1,56 @@
+# Contributing
+
+Unofficial DagzTagz project. Not an xAI product. You need the `grok` CLI for
+live runs; dry-run and scoring use Python 3.11+ stdlib only.
+
+Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) and [SECURITY.md](SECURITY.md).
+
+## Do not submit live runs
+
+`runs/` is gitignored on purpose. Do not attach live `runs/<id>/` trees, grok
+session dumps, `.env` files, or secrets to issues or pull requests. The only
+checked-in run fixture is `examples/sample-run/`, and it is synthetic.
+
+## Add a task
+
+Public tasks are **small traps**, not apps.
+
+1. Copy `tasks/001-units-trap.md` to `tasks/00N-short-name.md`.
+2. Fill every section:
+   - **Goal**
+   - **Constraints**
+   - **Hidden failure mode** (scorer notes; still do the work)
+   - **Required verification**
+   - **Pass / fail notes** for `score.py` / the critic
+3. Keep the work local. No network, no extra pip packages, no secrets.
+4. Run the dry-run path and the sample scorer before you open a PR:
+
+```bash
+python harness/run.py --dry-run tasks/00N-short-name.md
+python harness/score.py examples/sample-run
+```
+
+## Run the scorer
+
+```bash
+python harness/score.py examples/sample-run
+python harness/score.py runs/<id>    # local only; do not commit
+```
+
+Exit code is non-zero on `quit_early`, `REJECT`, or missing evidence.
+
+`score.json` must validate against `harness/schema/run.schema.json`.
+If the critic verdict is `ACCEPT WITH WAIVERS`, each waiver needs an `id`
+and a `reason`. Empty waiver lists are only valid for `ACCEPT`.
+
+## Pull requests
+
+Use the PR template checklist:
+
+- no secrets
+- `.gitignore` still correct (`git check-ignore -v .env runs/foo.json`)
+- `python harness/run.py --dry-run tasks/002-quit-early.md`
+- `python harness/score.py examples/sample-run`
+
+Do not add GitHub Actions that check out untrusted PRs with write credentials.
+Do not add hooks that upload the tree or read `$HOME` outside this project.

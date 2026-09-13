@@ -1,0 +1,56 @@
+# Ignore local runs, secrets, and Grok session state.
+
+# secrets and env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+*.token
+credentials.json
+auth.json
+secrets/
+
+# grok / agent local state
+.grok/cache/
+.grok/memory/
+.grok/sessions/
+.grok/*.local.*
+**/.grok-session*
+**/session.json
+runs/*
+!runs/.gitkeep
+!examples/sample-run/**
+
+# python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# logs and junk
+*.log
+tmp/
+temp/
+coverage/
+htmlcov/
+
+# ephemeral local task work (agents may write harness_tmp/ while solving traps)
+harness_tmp/

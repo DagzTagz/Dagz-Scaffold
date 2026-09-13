@@ -1,0 +1,56 @@
+name: Task
+description: Propose a new public trap task for the harness.
+title: "task: "
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Public tasks are small traps, not apps. Do not attach live `runs/` or secrets.
+  - type: input
+    id: name
+    attributes:
+      label: Proposed filename
+      placeholder: "006-short-name.md"
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+    validations:
+      required: true
+  - type: textarea
+    id: hidden
+    attributes:
+      label: Hidden failure mode
+      description: What a quitting or cheating agent will do. Scorer notes.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Required verification
+    validations:
+      required: true
+  - type: textarea
+    id: passfail
+    attributes:
+      label: Pass / fail notes
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety
+      options:
+        - label: This task needs no network, no pip packages, and no secrets
+          required: true
+        - label: I will not submit a live run folder with this issue
+          required: true

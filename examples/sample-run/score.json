@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "run_id": "sample-run",
+  "task": "tasks/001-units-trap.md",
+  "persistence": 0.9,
+  "rigor": 0.85,
+  "verdict": "ACCEPT WITH WAIVERS",
+  "quit_early": false,
+  "missing_evidence": false,
+  "waivers": [
+    {
+      "id": "W1",
+      "reason": "Verification covers 0/100/-273.15 identities and invalid inputs, not an exhaustive SI temperature table."
+    }
+  ],
+  "artifacts": {
+    "plan.md": true,
+    "critic.md": true,
+    "evidence.md": true,
+    "score.json": true,
+    "diffs": true
+  },
+  "quit_early_markers": [],
+  "notes": "Synthetic fixture for python harness/score.py examples/sample-run. Not a live grok run."
+}

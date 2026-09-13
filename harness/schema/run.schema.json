@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dagztagz.local/dagz-scaffold/run.schema.json",
+  "title": "Dagz-Scaffold score.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "task",
+    "persistence",
+    "rigor",
+    "verdict",
+    "quit_early",
+    "missing_evidence",
+    "waivers",
+    "artifacts",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task": {
+      "type": "string",
+      "minLength": 1
+    },
+    "persistence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "rigor": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["REJECT", "ACCEPT WITH WAIVERS", "ACCEPT"]
+    },
+    "quit_early": {
+      "type": "boolean"
+    },
+    "missing_evidence": {
+      "type": "boolean"
+    },
+    "waivers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "reason"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan.md", "critic.md", "evidence.md", "score.json"],
+      "properties": {
+        "plan.md": { "type": "boolean" },
+        "critic.md": { "type": "boolean" },
+        "evidence.md": { "type": "boolean" },
+        "score.json": { "type": "boolean" },
+        "diffs": { "type": "boolean" }
+      }
+    },
+    "quit_early_markers": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
