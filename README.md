@@ -27,6 +27,87 @@ Verdicts: `REJECT` | `ACCEPT WITH WAIVERS` | `ACCEPT`.
 
 `--dry-run` does **not** call the network or the model.
 
+## How to run on a Linux VM
+
+This is the path for a normal Linux VM (Ubuntu 22.04/24.04 or similar) with a
+terminal. Use `python3` if `python` is not installed.
+
+Live Grok calls use **your** `grok` login and xAI terms. Dry-run and scoring
+do not call the model.
+
+### 1. Check tools
+
+```bash
+python3 --version    # need 3.11 or newer
+git --version
+command -v grok && grok --version   # only required for live runs
+```
+
+If `python3` is missing: `sudo apt update && sudo apt install -y python3 git`.
+If `grok` is missing, install the [Grok Build CLI](https://github.com/xai-org/grok-cli)
+and log in on that VM before a live run.
+
+### 2. Get the repo
+
+```bash
+git clone https://github.com/DagzTagz/Dagz-Scaffold.git
+cd Dagz-Scaffold
+```
+
+Already have a clone? `cd` into it and `git pull`.
+
+### 3. Smoke test (no Grok, no model)
+
+From the repo root:
+
+```bash
+python3 harness/score.py examples/sample-run
+python3 harness/run.py --dry-run tasks/002-quit-early.md
+```
+
+You should see a JSON blob and a one-line summary like
+`ACCEPT WITH WAIVERS persistence=0.9 rigor=0.85 ...`.
+Dry-run prints `skipped grok` and writes a folder under `runs/` (gitignored).
+
+If `score.py` exits non-zero, stop — the checkout is incomplete.
+
+### 4. Interactive run (recommended)
+
+Still in the repo root:
+
+```bash
+grok
+```
+
+Then in the Grok session:
+
+1. Type `/persist` and point it at a task, e.g. `tasks/002-quit-early.md`.
+2. Let it write `runs/<id>/plan.md`, implement, then run `/critic`.
+3. `REJECT` means more work. Do not ship it.
+4. Type `/ship-gate` before you call it done.
+5. In another terminal (same repo):
+
+```bash
+ls runs/
+python3 harness/score.py runs/<id>
+```
+
+Replace `<id>` with the folder name you actually got.
+
+### 5. Headless live run
+
+Calls `grok -p`. Costs/usage follow your Grok account.
+
+```bash
+python3 harness/run.py tasks/002-quit-early.md
+python3 harness/score.py runs/<the-new-id>
+```
+
+### 6. Do not commit live output
+
+`runs/` (except `runs/.gitkeep`), `.env`, keys, and Grok session dumps stay
+local. See [SECURITY.md](SECURITY.md).
+
 ## The loop (under 2 minutes)
 
 ```text
@@ -42,15 +123,15 @@ task file  →  plan.md  →  builder diffs  →  critic.md  →  evidence.md  �
 5. Score the run locally:
 
 ```bash
-python harness/score.py examples/sample-run
+python3 harness/score.py examples/sample-run
 ```
 
 Live wrapper (calls `grok -p` unless you pass `--dry-run`):
 
 ```bash
-python harness/run.py --dry-run tasks/002-quit-early.md
-python harness/run.py tasks/002-quit-early.md          # requires grok
-python harness/score.py runs/<id>
+python3 harness/run.py --dry-run tasks/002-quit-early.md
+python3 harness/run.py tasks/002-quit-early.md          # requires grok
+python3 harness/score.py runs/<id>
 ```
 
 `score.py` prints JSON plus one line, and exits non-zero on `quit_early`, `REJECT`, or missing evidence.
