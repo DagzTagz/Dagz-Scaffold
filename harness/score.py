@@ -143,9 +143,54 @@ def scan_quit_early(text: str) -> list[str]:
     return sorted(set(hits))
 
 
+def _parse_fence(line: str) -> tuple[int, str] | None:
+    """Return (tick_count, info) for a backtick fence line, else None."""
+    m = re.match(r"^( {0,3})(`{3,})[ \t]*(.*)$", line.rstrip("\r\n"))
+    if m is None or "`" in m.group(3):
+        return None
+    return len(m.group(2)), m.group(3).strip()
+
+
+def _skip_fence_body(lines: list[str], i: int, n_ticks: int) -> int:
+    """Advance past a fence body to its closer (empty info, ≥ n_ticks)."""
+    while i < len(lines):
+        closer = _parse_fence(lines[i])
+        i += 1
+        if closer is not None and closer[1] == "" and closer[0] >= n_ticks:
+            break
+    return i
+
+
 def strip_markdown_fences(text: str) -> str:
-    """Drop ```markdown ... ``` blocks (quoted task excerpts) before scanning evidence."""
-    return re.sub(r"^```markdown\n.*?^```", "", text, flags=re.M | re.S)
+    """Drop fenced markdown task excerpts before scanning evidence."""
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        fence = _parse_fence(lines[i])
+        info0 = "" if fence is None else fence[1].split(" ", 1)[0]
+        if fence is None or info0 != "markdown":
+            out.append(lines[i])
+            i += 1
+            continue
+        n_open = fence[0]
+        start = i
+        i += 1
+        closed = False
+        while i < len(lines):
+            inner = _parse_fence(lines[i])
+            if inner is not None and inner[1] == "" and inner[0] >= n_open:
+                i += 1
+                closed = True
+                break
+            if inner is not None and inner[1] != "":
+                i = _skip_fence_body(lines, i + 1, inner[0])
+                continue
+            i += 1
+        if not closed:
+            out.extend(lines[start:])
+            break
+    return "".join(out)
 
 
 def scan_quit_early_by_file(plan: str, evidence: str, critic: str) -> dict[str, list[str]]:

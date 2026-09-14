@@ -141,6 +141,36 @@ class ScoreFixtures(unittest.TestCase):
             self.assertFalse(result["ok"], result)
             self.assertIn("dry_run", result["fail_reasons"])
 
+    def _score_with_evidence_suffix(self, suffix: str) -> dict:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = _copy_sample(Path(tmp))
+            evidence = (run_dir / "evidence.md").read_text(encoding="utf-8")
+            (run_dir / "evidence.md").write_text(evidence + suffix, encoding="utf-8")
+            return score.score_run(run_dir, SCHEMA)
+
+    def test_markdown_fence_too_hard_does_not_fail(self) -> None:
+        for opener in ("```markdown", "```markdown "):
+            suffix = (
+                f"\n\n{opener}\n"
+                "Calling this too hard is quoted task text.\n"
+                "```\n"
+            )
+            result = self._score_with_evidence_suffix(suffix)
+            self.assertTrue(result["ok"], result)
+            self.assertEqual(result["scans"]["quit_early"]["evidence"], [])
+
+    def test_quoted_task_excerpt_does_not_fail(self) -> None:
+        for name in ("002-quit-early.md", "005-missing-evidence.md"):
+            task = (REPO_ROOT / "tasks" / name).read_text(encoding="utf-8")
+            suffix = "\n\n```markdown\n" + task + "\n```\n"
+            result = self._score_with_evidence_suffix(suffix)
+            self.assertTrue(result["ok"], result)
+            self.assertEqual(
+                result["scans"]["quit_early"]["evidence"],
+                [],
+                msg=name,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
