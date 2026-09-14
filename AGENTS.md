@@ -60,5 +60,6 @@ is used or the critic verdict is `ACCEPT` / `ACCEPT WITH WAIVERS`.
 
 - Python 3.11+, **stdlib only** for harness code. No surprise pip packages.
 - `harness/run.py --dry-run` must not call the network or the model.
-- `harness/score.py` reads local files only.
+- `harness/score.py` reads local files; `--replay` is local subprocess, no network.
+- Keep `--replay` default off.
 - Do not commit `runs/`, `.env`, keys, or Grok session state.

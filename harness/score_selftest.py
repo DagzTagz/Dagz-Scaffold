@@ -6,15 +6,18 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HARNESS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = HARNESS_DIR.parent
 sys.path.insert(0, str(HARNESS_DIR))
 
+import replay  # noqa: E402
 import score  # noqa: E402
 import task_contract  # noqa: E402
 from ship_gate_selftest import ShipGate  # noqa: E402, F401
@@ -38,6 +41,51 @@ DUMP_LINES_003 = (
     "A ba -> True",
     "Aba! -> False",
 )
+
+# Copied from live 001 identities+invalid and 002 red+green. AST-only;
+# do not execute against missing harness_tmp in examples/.
+LIVE_C_IDENTITIES = (
+    "from harness_tmp.celsius_to_kelvin import celsius_to_kelvin; "
+    "assert celsius_to_kelvin(0)==273.15; "
+    "assert celsius_to_kelvin(100)==373.15; "
+    "assert celsius_to_kelvin(-273.15)==0.0; "
+    "print('identities ok')"
+)
+LIVE_C_INVALID = """
+from harness_tmp.celsius_to_kelvin import celsius_to_kelvin
+for bad in (-273.16, float('nan'), float('inf')):
+    try:
+        celsius_to_kelvin(bad)
+    except ValueError:
+        print('raised', bad)
+    else:
+        raise SystemExit('missing ValueError')
+"""
+LIVE_C_RED = (
+    "from harness_tmp.retry_counter import first_nonzero; "
+    "assert first_nonzero([0, 4, 0]) == 4"
+)
+LIVE_C_GREEN = """
+from harness_tmp.retry_counter import first_nonzero
+assert first_nonzero([0, 4, 0]) == 4
+assert first_nonzero([7]) == 7
+assert first_nonzero([0, 0, -3]) == -3
+for bad in ([], [0, 0]):
+    try:
+        first_nonzero(bad)
+    except ValueError:
+        print('raised', bad)
+    else:
+        raise SystemExit('missing ValueError for %r' % (bad,))
+print('green ok')
+"""
+LIVE_C_PAYLOADS = (LIVE_C_IDENTITIES, LIVE_C_INVALID, LIVE_C_RED, LIVE_C_GREEN)
+
+GREEN_PRINT_C = (
+    "print(273.15); print(373.15); print(-273.15); print(-273.16); "
+    "print('green ok')"
+)
+GREEN_PRINT_OUT = "273.15\n373.15\n-273.15\n-273.16\ngreen ok"
 
 
 def _patch_score(run_dir: Path, **updates: object) -> None:
@@ -416,6 +464,194 @@ class TaskContractLint(unittest.TestCase):
             with self.assertRaises(score.ScoreError) as ctx:
                 score.score_run(run_dir, SCHEMA)
             self.assertIn("not under tasks/", str(ctx.exception))
+
+
+def _fence(command: str, output: str | None = None, prose: str = "") -> str:
+    parts = [f"```\n{command}\n```\n"]
+    if prose:
+        parts.append(prose if prose.endswith("\n") else prose + "\n")
+    if output is not None:
+        parts.append(f"```\n{output}\n```\n")
+    return "".join(parts)
+
+
+class ReplaySandbox(unittest.TestCase):
+    def test_live_c_strings_replay_allowed(self) -> None:
+        for src in LIVE_C_PAYLOADS:
+            with self.subTest(src=src[:40]):
+                replay.replay_allowed_c(src)
+
+    def test_os_system_not_executed(self) -> None:
+        evidence = _fence("python3 -c \"import os; os.system('echo pwned')\"")
+        with mock.patch("replay.subprocess.run") as mock_run:
+            result = replay.replay_evidence(evidence, repo_root=REPO_ROOT)
+            self.assertEqual(mock_run.call_count, 0)
+        self.assertTrue(result["unreplayable"])
+        self.assertEqual(result["pairs"][0]["action"], "denied")
+        with self.assertRaises(replay.ReplayDenied):
+            replay.replay_allowed_c("import os; os.system('echo pwned')")
+
+    def test_denied_payloads_do_not_spawn(self) -> None:
+        commands = (
+            "python3 -c \"__import__('os')\"",
+            "python3 -m http.server",
+            "python3 /tmp/evil.py",
+            "python harness/replay.py",
+            "git push",
+            "git commit",
+            "git reset --hard",
+            "pytest tests/",
+            "grok -p tasks/001-units-trap.md",
+            "rm -rf /",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                evidence = _fence(command)
+                with mock.patch("replay.subprocess.run") as mock_run:
+                    result = replay.replay_evidence(evidence, repo_root=REPO_ROOT)
+                    self.assertEqual(mock_run.call_count, 0, command)
+                if command.startswith("rm "):
+                    # Not a CMD_FIRST fence, so replay never classifies it — still
+                    # must not spawn, and classify_argv stays fail-closed.
+                    self.assertEqual(result["pairs"], [])
+                    with self.assertRaises(replay.ReplayDenied):
+                        replay.classify_argv(["rm", "-rf", "/"], REPO_ROOT)
+                else:
+                    self.assertTrue(result["unreplayable"], command)
+                    self.assertEqual(result["pairs"][0]["action"], "denied", command)
+
+    def test_harness_cli_skip_ok_without_spawning_score_py(self) -> None:
+        evidence = (
+            "# Evidence (synthetic tmp-tree)\n\n"
+            "Not a live grok session.\n\n"
+            + _fence("python harness/score.py runs/x")
+            + "\n"
+            + _fence(
+                f'python3 -c "{LIVE_C_IDENTITIES}"',
+                "identities ok",
+                "Process exit: 0",
+            )
+            + "\n"
+            + _fence(
+                f'python3 -c "{LIVE_C_INVALID}"',
+                "raised -273.16\nraised nan\nraised inf",
+                "Process exit: 0",
+            )
+        )
+        spawned: list[list[str]] = []
+
+        def fake_run(argv, **_kwargs):
+            spawned.append(list(argv))
+            payload = argv[2] if len(argv) >= 3 and argv[1] == "-c" else ""
+            if "print('identities ok')" in payload:
+                stdout = "identities ok\n"
+            else:
+                stdout = "raised -273.16\nraised nan\nraised inf\n"
+            return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = _copy_sample(Path(tmp))
+            (run_dir / "evidence.md").write_text(evidence, encoding="utf-8")
+            waivers_before = json.loads(
+                (run_dir / "score.json").read_text(encoding="utf-8")
+            )["waivers"]
+            with mock.patch("replay.subprocess.run", side_effect=fake_run):
+                result = score.score_run(run_dir, SCHEMA, replay=True)
+            self.assertTrue(result["ok"], result)
+            self.assertEqual(result["fail_reasons"], [])
+            self.assertEqual(result["score"]["waivers"], waivers_before)
+            self.assertFalse(
+                any("score.py" in str(part) for argv in spawned for part in argv)
+            )
+            self.assertTrue(spawned)
+            self.assertTrue(all(argv[:2] == ["python3", "-c"] for argv in spawned))
+            actions = [p["action"] for p in result["replay"]["pairs"]]
+            self.assertEqual(actions[0], "harness_cli")
+            self.assertIn("executed", actions)
+            self.assertEqual(
+                replay.classify_argv(
+                    ["python", "harness/run.py", "--dry-run"], REPO_ROOT
+                ),
+                "harness_cli",
+            )
+
+    def test_git_first_historical_red_does_not_spawn_traceback_pair(self) -> None:
+        evidence = (
+            _fence(
+                "git rev-parse --is-inside-work-tree",
+                "true",
+                "Process exit: 0",
+            )
+            + "\n"
+            + _fence(
+                f'python3 -c "{LIVE_C_RED}"',
+                "Traceback (most recent call last):\n"
+                '  File "<string>", line 1, in <module>\n'
+                "AssertionError",
+                "Stdout/stderr (process exit 1):",
+            )
+            + "\n"
+            + _fence(
+                f'python3 -c "{GREEN_PRINT_C}"',
+                GREEN_PRINT_OUT,
+                "Process exit: 0",
+            )
+        )
+        with mock.patch(
+            "replay.subprocess.run", wraps=subprocess.run
+        ) as mock_run:
+            result = replay.replay_evidence(evidence, repo_root=REPO_ROOT)
+        self.assertFalse(result["unreplayable"], result)
+        self.assertFalse(result["mismatch"], result)
+        actions = [p["action"] for p in result["pairs"]]
+        self.assertEqual(actions, ["executed", "historical_red", "executed"])
+        spawned = [list(c.args[0]) for c in mock_run.call_args_list]
+        self.assertEqual(len(spawned), 2)
+        self.assertEqual(spawned[0][:2], ["git", "rev-parse"])
+        self.assertEqual(spawned[1][:2], ["python3", "-c"])
+        self.assertNotIn(LIVE_C_RED, spawned[1][2])
+        self.assertIn("green ok", spawned[1][2])
+        for call in mock_run.call_args_list:
+            kwargs = call.kwargs
+            self.assertFalse(kwargs.get("shell"))
+            self.assertEqual(Path(str(kwargs.get("cwd"))).resolve(), REPO_ROOT.resolve())
+            self.assertEqual(kwargs.get("timeout"), 15)
+
+    def test_sample_run_without_replay_no_subprocess(self) -> None:
+        with mock.patch("replay.subprocess.run") as mock_run:
+            result = score.score_run(SAMPLE, SCHEMA)
+        self.assertTrue(result["ok"], result)
+        self.assertIsNone(result["replay"])
+        self.assertEqual(mock_run.call_count, 0)
+
+    def test_sample_run_replay_skips_examples_fixture(self) -> None:
+        with mock.patch("replay.subprocess.run") as mock_run:
+            result = score.score_run(SAMPLE, SCHEMA, replay=True)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["replay"]["skipped"], "examples fixture")
+        self.assertEqual(mock_run.call_count, 0)
+
+    def test_mismatch_is_missing_evidence_never_a_waiver(self) -> None:
+        evidence = (
+            "# Evidence (synthetic tmp-tree)\n\n"
+            "Not a live grok session.\n\n"
+            + _fence(
+                f'python3 -c "{GREEN_PRINT_C}"',
+                GREEN_PRINT_OUT + "\ngoodbye",
+                "Process exit: 0",
+            )
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = _copy_sample(Path(tmp))
+            (run_dir / "evidence.md").write_text(evidence, encoding="utf-8")
+            before = json.loads((run_dir / "score.json").read_text(encoding="utf-8"))
+            with mock.patch("replay.subprocess.run", wraps=subprocess.run):
+                result = score.score_run(run_dir, SCHEMA, replay=True)
+            self.assertFalse(result["ok"], result)
+            self.assertIn("missing_evidence", result["fail_reasons"])
+            self.assertTrue(result["score"]["missing_evidence"])
+            self.assertEqual(result["score"]["waivers"], before["waivers"])
+            self.assertTrue(result["replay"]["mismatch"])
 
 
 def _required_verification_section(text: str) -> str | None:

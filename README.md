@@ -27,6 +27,11 @@ Verdicts: `REJECT` | `ACCEPT WITH WAIVERS` | `ACCEPT`.
 
 `--dry-run` does **not** call the network or the model.
 
+`score.py` reads local files. `--replay` (default **off**) re-runs allowlisted
+`python -c` and `git` from evidence as a **local** subprocess. It does not
+call the network or the model. `python3 harness/score.py examples/sample-run`
+stays subprocess-free.
+
 ## How to run on a Linux VM
 
 This is the path for a normal Linux VM (Ubuntu 22.04/24.04 or similar) with a
@@ -75,6 +80,8 @@ that flag reads this clone's index).
 Dry-run prints `skipped grok` and writes a folder under `runs/` (gitignored).
 Scoring that dry-run folder exits 1 with `dry_run` in `fail_reasons`; it is
 not a live persist.
+Do not pass `--replay` on the sample-run smoke; it is off by default so that
+command stays a local-files read with no subprocess.
 
 If `score.py examples/sample-run`, `score_selftest.py`, or
 `ship_gate.py examples/sample-run` exits non-zero, stop — the checkout is
@@ -171,7 +178,7 @@ Scores: `persistence` (0–1) and `rigor` (0–1).
 ```text
 .grok/skills/     persist, critic, ship-gate
 .grok/agents/     builder + critic
-harness/          run.py, score.py, score_selftest.py, ship_gate.py, schema
+harness/          run.py, score.py, replay.py, score_selftest.py, ship_gate.py, schema
 tasks/            small public traps
 examples/         sample-run plus synthetic fail-* fixtures
 runs/             live artifacts (gitignored)

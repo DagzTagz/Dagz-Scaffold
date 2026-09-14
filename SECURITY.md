@@ -28,9 +28,12 @@ proof. Strip keys, cookies, and session dumps first.
 | `examples/sample-run/` | Synthetic fixture only | Yes |
 | `.env.example` | Dummy names, empty values | Yes |
 
-`harness/run.py --dry-run` and `harness/score.py` read and write **local files
-only**. They must not call the network. Live `run.py` (no `--dry-run`) shells
-out to `grok -p`, which may send repository context to xAI under your account.
+`harness/run.py --dry-run` reads and writes **local files only** and must not
+call the network. `harness/score.py` reads local files. `--replay` (default
+off) is a local subprocess of AST-allowlisted `python -c` and allowlisted
+`git`; it must not call the network or the model. Live `run.py` (no
+`--dry-run`) shells out to `grok -p`, which may send repository context to
+xAI under your account.
 
 ## Live grok runs
 

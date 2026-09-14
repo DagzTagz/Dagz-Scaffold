@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Score a Dagz-Scaffold run folder. Local files only. No network."""
+"""Score a Dagz-Scaffold run folder.
+
+Reads local files. --replay is a local subprocess, no network, default off.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +12,7 @@ import re
 import sys
 from pathlib import Path
 
+from replay import is_under_examples, replay_evidence
 from task_contract import (
     ContractError,
     extract_fences,
@@ -287,7 +291,7 @@ def load_score(path: Path) -> dict:
     return data
 
 
-def score_run(run_dir: Path, schema: dict) -> dict:
+def score_run(run_dir: Path, schema: dict, replay: bool = False) -> dict:
     missing = [name for name in REQUIRED_FILES if not (run_dir / name).is_file()]
     if missing:
         raise ScoreError(f"missing artifacts: {', '.join(missing)}")
@@ -377,6 +381,17 @@ def score_run(run_dir: Path, schema: dict) -> dict:
     if required_missing:
         fail_reasons.append("required_verification")
 
+    replay_doc: dict | None = None
+    if replay:
+        if is_under_examples(run_dir, REPO_ROOT):
+            replay_doc = {"skipped": "examples fixture"}
+        else:
+            replay_doc = replay_evidence(evidence, repo_root=REPO_ROOT)
+            if replay_doc.get("mismatch") or replay_doc.get("unreplayable"):
+                payload = dict(payload)
+                payload["missing_evidence"] = True
+                fail_reasons.append("missing_evidence")
+
     fail_reasons = list(dict.fromkeys(fail_reasons))
 
     summary = (
@@ -396,12 +411,19 @@ def score_run(run_dir: Path, schema: dict) -> dict:
             "required_missing": required_missing,
             "red_then_green": red_then_green,
         },
+        "replay": replay_doc,
     }
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Score a Dagz-Scaffold run folder")
     parser.add_argument("run_dir", type=Path, help="Path to a run folder")
+    parser.add_argument(
+        "--replay",
+        action="store_true",
+        default=False,
+        help="Re-run allowlisted python -c and git from evidence (local subprocess, no network)",
+    )
     args = parser.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
@@ -411,7 +433,7 @@ def main(argv: list[str] | None = None) -> int:
 
     schema_path = Path(__file__).resolve().parent / "schema" / "run.schema.json"
     try:
-        result = score_run(run_dir, load_schema(schema_path))
+        result = score_run(run_dir, load_schema(schema_path), replay=args.replay)
     except ScoreError as exc:
         error_doc = {
             "ok": False,
@@ -436,6 +458,7 @@ def main(argv: list[str] | None = None) -> int:
                 "score",
                 "scans",
                 "derived",
+                "replay",
             )
         },
         sys.stdout,
