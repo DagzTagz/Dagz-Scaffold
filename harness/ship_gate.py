@@ -99,8 +99,11 @@ def main(argv: list[str] | None = None, *, git_runner=None) -> int:
     blocks: list[str] = []
     if not result.get("ok"):
         blocks.extend(result.get("fail_reasons") or ["score_not_ok"])
-    if result.get("score", {}).get("verdict") == "REJECT":
-        blocks.append("REJECT")
+    score = result.get("score") or {}
+    if score.get("verdict") == "REJECT":
+        ov = score.get("override") if isinstance(score.get("override"), dict) else {}
+        if not (str(ov.get("by") or "").strip() and str(ov.get("reason") or "").strip()):
+            blocks.append("REJECT")
     if args.git_checks:
         runner = git_runner if git_runner is not None else default_git_runner
         blocks.extend(git_index_blocks(REPO_ROOT, runner=runner))

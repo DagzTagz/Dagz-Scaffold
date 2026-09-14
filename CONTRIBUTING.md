@@ -52,6 +52,7 @@ Small fixes (typos, docs clarity, obvious bugs) can go straight to a pull reques
 git clone https://github.com/DagzTagz/Dagz-Scaffold.git
 cd Dagz-Scaffold
 python3 harness/score.py examples/sample-run
+python3 harness/test_score.py
 python3 harness/score_selftest.py
 python3 harness/ship_gate.py examples/sample-run
 ```

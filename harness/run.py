@@ -160,12 +160,67 @@ Required files: plan.md, critic.md, evidence.md, score.json plus real diffs.
 Loop: plan first, then builder, then critic, then python harness/score.py {rel_run}, then python harness/ship_gate.py {rel_run} --git-checks.
 If ship_gate.py exits non-zero, the run is not done. Do not skip this program.
 REJECT returns to the builder. Do not quit early. Do not declare done without score.json.
+Do not invent score.json override. Only a human may set override.by and override.reason.
 
 Task:
 ---
 {task_text}
 ---
 """
+
+
+def retry_prompt(task_path: Path, run_dir: Path, task_text: str) -> str:
+    rel_task = os.path.relpath(task_path, REPO_ROOT)
+    rel_run = os.path.relpath(run_dir, REPO_ROOT)
+    critic = ""
+    critic_path = run_dir / "critic.md"
+    if critic_path.is_file():
+        critic = critic_path.read_text(encoding="utf-8")[:8000]
+    return f"""REJECT returns to the builder. Do not bargain the verdict down.
+Do not invent score.json override.
+
+The previous persist of {rel_task} did not pass score.py / ship-gate.
+Write artifacts into {rel_run}/. Fix the blockers and re-run verification.
+
+Critic (blockers):
+---
+{critic or "(no critic.md yet)"}
+---
+
+Task:
+---
+{task_text}
+---
+"""
+
+
+def _score_dir(run_dir: Path) -> dict:
+    from score import ScoreError, load_schema, score_run
+
+    schema = load_schema(Path(__file__).resolve().parent / "schema" / "run.schema.json")
+    try:
+        return score_run(run_dir, schema, replay=False)
+    except ScoreError as exc:
+        return {
+            "ok": False,
+            "fail_reasons": [str(exc)],
+            "summary": f"INVALID {exc}",
+            "score": {},
+        }
+
+
+def _record_attempts(run_dir: Path, n: int) -> None:
+    path = run_dir / "score.json"
+    if not path.is_file():
+        return
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return
+    if not isinstance(data, dict):
+        return
+    data["attempts"] = int(n)
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
 def run_live(task_path: Path, run_dir: Path, task_text: str) -> int:
@@ -176,11 +231,40 @@ def run_live(task_path: Path, run_dir: Path, task_text: str) -> int:
         )
         return 2
     run_dir.mkdir(parents=True, exist_ok=True)
-    prompt = live_prompt(task_path, run_dir, task_text)
-    cmd = ["grok", "-p", prompt, "--cwd", str(REPO_ROOT)]
-    print("exec:", "grok", "-p", "<prompt>", "--cwd", str(REPO_ROOT), file=sys.stderr)
-    completed = subprocess.run(cmd, check=False)
-    return int(completed.returncode)
+    max_calls = 2
+    for call in range(1, max_calls + 1):
+        prompt = (
+            live_prompt(task_path, run_dir, task_text)
+            if call == 1
+            else retry_prompt(task_path, run_dir, task_text)
+        )
+        cmd = ["grok", "-p", prompt, "--cwd", str(REPO_ROOT)]
+        print("exec:", "grok", "-p", "<prompt>", "--cwd", str(REPO_ROOT), file=sys.stderr)
+        subprocess.run(cmd, check=False)
+        result = _score_dir(run_dir)
+        _record_attempts(run_dir, call)
+        missing = [name for name in REQUIRED if not (run_dir / name).is_file()]
+        ok = bool(result.get("ok")) and not missing
+        verdict = (result.get("score") or {}).get("verdict")
+        if ok:
+            print(result.get("summary", "ok"), file=sys.stderr)
+            return 0
+        print(
+            "live persist not ok:",
+            result.get("summary") or result.get("fail_reasons") or missing,
+            file=sys.stderr,
+        )
+        if verdict == "REJECT" and call < max_calls:
+            print("REJECT returns to builder; retrying grok -p once", file=sys.stderr)
+            continue
+        if call < max_calls:
+            print("score failed; retrying grok -p once", file=sys.stderr)
+            continue
+    print(
+        "error: live persist did not pass score after 2 grok calls; not claiming success",
+        file=sys.stderr,
+    )
+    return 1
 
 
 def main(argv: list[str] | None = None) -> int:

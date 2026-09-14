@@ -26,7 +26,8 @@ Verdicts: `REJECT` | `ACCEPT WITH WAIVERS` | `ACCEPT`.
 ## What ships today
 
 - **Plan → builder → critic → evidence → score** loop (`/persist`, `/critic`, `/ship-gate`)
-- **Stdlib scorer** (`python harness/score.py`) — local files only by default
+- **Stdlib scorer** (`python harness/score.py`) — **derived** quit_early / missing_evidence / persistence / rigor; claims in `score.json` are hints
+- **Live `run.py`** scores after `grok -p` and retries once on REJECT (cap 2 live calls). Dry-run never calls grok.
 - **Fail-closed quit-early** on evidence phrases; task `scorer-contract` JSON; `ship_gate.py`
 - **Optional `--replay`** — AST-allowlisted `python -c` and allowlisted `git` as a **local** subprocess (default **off**)
 - **Public traps** in `tasks/` (units, quit-early, fake-green, scope-cut, missing evidence)
@@ -58,6 +59,7 @@ Adding a trap: **[docs/tasks.md](docs/tasks.md)**.
 > git clone https://github.com/DagzTagz/Dagz-Scaffold.git
 > cd Dagz-Scaffold
 > python3 harness/score.py examples/sample-run
+> python3 harness/test_score.py
 > python3 harness/score_selftest.py
 > python3 harness/ship_gate.py examples/sample-run
 > ```
@@ -105,7 +107,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.
 ### Next
 
 - [ ] GitHub-facing docs at hypothesis-engine quality (this drop)
-- [ ] Read-only CI (`score_selftest.py` + sample-run + hermetic ship-gate) — no secrets, no `grok`
+- [x] Read-only CI (`test_score.py` + sample-run) — no secrets, no `grok`
 - [ ] More public traps; keep live `runs/` gitignored
 
 ### Non-goals
@@ -119,7 +121,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.
 ```text
 .grok/skills/     persist, critic, ship-gate
 .grok/agents/     builder + critic
-harness/          run.py, score.py, replay.py, score_selftest.py, ship_gate.py, schema
+harness/          run.py, score.py, replay.py, score_selftest.py, test_score.py, ship_gate.py, schema
 tasks/            small public traps
 examples/         sample-run plus synthetic fail-* fixtures
 docs/             scorer + task authoring

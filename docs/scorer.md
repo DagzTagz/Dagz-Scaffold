@@ -60,6 +60,12 @@ The summary line uses derived `persistence` / `rigor` (0–1). Examples:
 
 Mismatch between claims and derived does **not** fail `ok`.
 
+Wrapper `derived` also includes `attempts` (command-fence count) and
+`recovered_after_failure` (fenced red then a later command).
+
+A `REJECT` run is still `ok: false` unless a **human** `override` object is
+present with both `by` and `reason`. The critic/builder must not invent it.
+
 ## Replay (`--replay`)
 
 Default **off**.

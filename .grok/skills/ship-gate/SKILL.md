@@ -21,6 +21,10 @@ The program blocks on:
 
 `ACCEPT WITH WAIVERS` passes the gate only when the scorer already accepted explicit waivers.
 
+`REJECT` passes **only** when `score.json` has a human `override` with both `by` and `reason`. The model must not fill `override`.
+
+Derived `persistence` / `rigor` / `attempts` / `recovered_after_failure` come from `score.py` stdout (`derived`), not from self-reported claims.
+
 ## Pass
 
 The program prints **SHIP-GATE: PASS** plus the scorer summary. Repeat that. Do not add a second checklist.

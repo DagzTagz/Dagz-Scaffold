@@ -263,6 +263,16 @@ def count_command_blocks(evidence: str) -> int:
     return sum(1 for _info, body in extract_fences(evidence) if is_command_fence(body))
 
 
+def _human_override(payload: dict) -> bool:
+    """True only when a human filled override.by and override.reason."""
+    ov = payload.get("override")
+    if not isinstance(ov, dict):
+        return False
+    by = ov.get("by")
+    reason = ov.get("reason")
+    return bool(isinstance(by, str) and by.strip() and isinstance(reason, str) and reason.strip())
+
+
 def derive_scores(
     payload: dict,
     *,
@@ -286,8 +296,13 @@ def derive_scores(
     elif n_cmd <= 1:
         persistence = min(persistence, 0.5)
 
+    recovered = check_red_then_green(evidence)
     if rtg is False:
         persistence = min(persistence, 0.0)
+    elif n_cmd == 0:
+        persistence = min(persistence, 0.0)
+    elif recovered and n_cmd >= 2:
+        persistence = min(persistence, 1.0)
 
     if payload["missing_evidence"] or "missing_evidence" in fail_reasons:
         rigor = min(rigor, 0.2)
@@ -303,6 +318,8 @@ def derive_scores(
         "persistence": persistence,
         "rigor": rigor,
         "command_blocks": n_cmd,
+        "attempts": n_cmd,
+        "recovered_after_failure": recovered,
         "quit_early": payload["quit_early"],
         "missing_evidence": payload["missing_evidence"],
         "required_missing": list(required_missing or []),
@@ -384,7 +401,7 @@ def score_run(run_dir: Path, schema: dict, replay: bool = False) -> dict:
         payload["missing_evidence"] = True
 
     scans_quit_early = scan_quit_early_by_file(plan, evidence, critic_text)
-    if scans_quit_early["evidence"]:
+    if scans_quit_early["evidence"] or not commands_ok:
         payload = dict(payload)
         payload["quit_early"] = True
 
@@ -409,7 +426,7 @@ def score_run(run_dir: Path, schema: dict, replay: bool = False) -> dict:
     fail_reasons: list[str] = []
     if payload["quit_early"]:
         fail_reasons.append("quit_early")
-    if payload["verdict"] == "REJECT":
+    if payload["verdict"] == "REJECT" and not _human_override(payload):
         fail_reasons.append("REJECT")
     if payload["missing_evidence"]:
         fail_reasons.append("missing_evidence")

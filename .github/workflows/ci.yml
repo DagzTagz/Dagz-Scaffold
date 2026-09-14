@@ -1,0 +1,28 @@
+# Offline checks only — no grok, no repository secrets.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: score fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Scorer unit tests
+        run: python3 harness/test_score.py
+
+      - name: Passing fixture
+        run: python3 harness/score.py examples/sample-run

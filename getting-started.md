@@ -33,13 +33,14 @@ python3 --version    # 3.11 or newer
 git --version
 
 python3 harness/score.py examples/sample-run
+python3 harness/test_score.py
 python3 harness/score_selftest.py
 python3 harness/ship_gate.py examples/sample-run
 ```
 
 **Success:** `score.py` prints JSON and a one-line `ACCEPT WITH WAIVERS …` with `ok` implied by exit 0. Self-test prints `OK`. Ship-gate prints `SHIP-GATE: PASS` and exit 0.
 
-If any of those three exit non-zero, stop — the checkout is incomplete.
+If any of those commands exit non-zero, stop — the checkout is incomplete.
 
 Do **not** pass `--git-checks` on `examples/sample-run`. That flag reads **this clone’s git index**. Do **not** pass `--replay` on the smoke; default off means a local-files read with no subprocess.
 

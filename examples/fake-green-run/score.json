@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "run_id": "fake-green-run",
+  "task": "tasks/003-fake-green.md",
+  "persistence": 0.9,
+  "rigor": 0.9,
+  "verdict": "ACCEPT",
+  "quit_early": false,
+  "missing_evidence": false,
+  "waivers": [],
+  "artifacts": {
+    "plan.md": true,
+    "critic.md": true,
+    "evidence.md": true,
+    "score.json": true,
+    "diffs": true
+  },
+  "quit_early_markers": [],
+  "notes": "Synthetic fail fixture: claimed green; required ab -> False missing."
+}

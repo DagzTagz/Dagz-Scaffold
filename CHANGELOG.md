@@ -48,4 +48,7 @@ Scoring a `--dry-run` folder exits **1** (`dry_run`). That is expected.
 
 ## Unreleased
 
-Nothing yet. Next likely: read-only CI (self-test + sample-run + hermetic ship-gate), more traps.
+- Live `run.py` scores after `grok -p` and retries once (cap 2); records `attempts`
+- Human-only `override: { by, reason }` may pass a REJECT through score/ship-gate
+- Named fail fixtures `examples/quit-early-run`, `reject-run`, `fake-green-run`
+- `harness/test_score.py`; optional read-only CI (no grok, no secrets)

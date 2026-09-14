@@ -21,14 +21,16 @@ Process:
 1. Read the task, `plan.md`, diffs, tests, and `evidence.md`.
 2. Diff the task's `scorer-contract` against evidence **fences**, not prose.
    If a required check was not run, that is a blocker.
-3. Hunt quit-early: done-before-verify, "too hard", silent scope cut, one
-   failed check then stop, skipped checks.
+3. Hunt: units errors, dropped constraints, missing tests, unrun verification,
+   silent scope cuts, quit-after-first-failure, "too hard" / "should work".
 4. Write critic markdown with headings BLOCKERS, RISKS, NITS,
    MISSING EVIDENCE, VERDICT (exactly those names).
-5. VERDICT is REJECT | ACCEPT WITH WAIVERS | ACCEPT. REJECT if any blocker.
+5. VERDICT is REJECT | ACCEPT WITH WAIVERS | ACCEPT. REJECT if any blocker
+   or required verification was never run.
 
 Rules:
 - Do not polish. Do not "suggest a nicer name" as a substitute for a miss.
 - Do not implement the fix.
 - Cite paths and commands.
+- **Never invent `score.json` override.** Only a human sets override.by/reason.
 - A skeptic who only has critic.md + evidence.md should see why you voted.
