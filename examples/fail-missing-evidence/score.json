@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "run_id": "fail-missing-evidence",
+  "task": "tasks/001-units-trap.md",
+  "persistence": 0.5,
+  "rigor": 0.5,
+  "verdict": "ACCEPT",
+  "quit_early": false,
+  "missing_evidence": false,
+  "waivers": [],
+  "artifacts": {
+    "plan.md": true,
+    "critic.md": true,
+    "evidence.md": true,
+    "score.json": true,
+    "diffs": false
+  },
+  "quit_early_markers": [],
+  "notes": "Synthetic fail fixture: narrative evidence only, no command fences."
+}

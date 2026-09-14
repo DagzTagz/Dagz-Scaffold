@@ -51,8 +51,8 @@ git check-ignore -v .env runs/foo.json .venv/bin/python
 ```
 
 `--dry-run` printed `skipped grok: --dry-run does not call the model` and
-wrote gitignored files under `runs/`. `score.py` on that dry-run folder
-exited 0.
+wrote gitignored files under `runs/`. Scoring that dry-run folder is
+`fail_reasons: dry_run` (exit 1); it is not a live persist.
 
 ```
 git check-ignore -v .env runs/foo.json .venv/bin/python

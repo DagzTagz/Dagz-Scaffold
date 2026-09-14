@@ -8,8 +8,8 @@ Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) and [SECURITY.md](SECURITY.
 ## Do not submit live runs
 
 `runs/` is gitignored on purpose. Do not attach live `runs/<id>/` trees, grok
-session dumps, `.env` files, or secrets to issues or pull requests. The only
-checked-in run fixture is `examples/sample-run/`, and it is synthetic.
+session dumps, `.env` files, or secrets to issues or pull requests. Checked-in
+run fixtures under `examples/` (`sample-run/` plus `fail-*/`) are synthetic.
 
 ## Add a task
 
@@ -28,16 +28,21 @@ Public tasks are **small traps**, not apps.
 ```bash
 python harness/run.py --dry-run tasks/00N-short-name.md
 python harness/score.py examples/sample-run
+python harness/score_selftest.py
 ```
+
+Dry-run writes files and does not call the model. Scoring that dry-run
+directory exits 1 with `dry_run` in `fail_reasons`; that is expected.
 
 ## Run the scorer
 
 ```bash
 python harness/score.py examples/sample-run
+python harness/score_selftest.py
 python harness/score.py runs/<id>    # local only; do not commit
 ```
 
-Exit code is non-zero on `quit_early`, `REJECT`, or missing evidence.
+Exit code is non-zero on `quit_early`, `REJECT`, missing evidence, or `dry_run`.
 
 `score.json` must validate against `harness/schema/run.schema.json`.
 If the critic verdict is `ACCEPT WITH WAIVERS`, each waiver needs an `id`
@@ -49,8 +54,9 @@ Use the PR template checklist:
 
 - no secrets
 - `.gitignore` still correct (`git check-ignore -v .env runs/foo.json`)
-- `python harness/run.py --dry-run tasks/002-quit-early.md`
+- `python harness/run.py --dry-run tasks/002-quit-early.md` (writes files; scoring that dir is `dry_run`)
 - `python harness/score.py examples/sample-run`
+- `python harness/score_selftest.py`
 
 Do not add GitHub Actions that check out untrusted PRs with write credentials.
 Do not add hooks that upload the tree or read `$HOME` outside this project.

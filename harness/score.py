@@ -136,18 +136,30 @@ def section_is_empty(body: str) -> bool:
     return False
 
 
-def scan_quit_early(*texts: str) -> list[str]:
+def scan_quit_early(text: str) -> list[str]:
     hits: list[str] = []
-    for text in texts:
-        for pattern in QUIT_EARLY_PATTERNS:
-            match = pattern.search(text)
-            if match:
-                hits.append(match.group(0))
+    for pattern in QUIT_EARLY_PATTERNS:
+        hits.extend(m.group(0) for m in pattern.finditer(text))
     return sorted(set(hits))
 
 
+def strip_markdown_fences(text: str) -> str:
+    """Drop ```markdown ... ``` blocks (quoted task excerpts) before scanning evidence."""
+    return re.sub(r"^```markdown\n.*?^```", "", text, flags=re.M | re.S)
+
+
+def scan_quit_early_by_file(plan: str, evidence: str, critic: str) -> dict[str, list[str]]:
+    return {
+        "plan": scan_quit_early(plan),
+        "evidence": scan_quit_early(strip_markdown_fences(evidence)),
+        "critic": scan_quit_early(critic),
+    }
+
+
 def evidence_has_commands(text: str) -> bool:
-    return bool(re.search(r"^(\$ |python |git |pytest |grok )", text, re.M)) or "```" in text
+    return bool(
+        re.search(r"^(\$ |python3? |git |pytest |grok )", text, re.M)
+    ) or "```" in text
 
 
 def load_score(path: Path) -> dict:
@@ -205,13 +217,10 @@ def score_run(run_dir: Path, schema: dict) -> dict:
         payload = dict(payload)
         payload["missing_evidence"] = True
 
-    markers = list(payload.get("quit_early_markers") or [])
-    markers.extend(scan_quit_early(plan, evidence, critic_text))
-    if payload["quit_early"] is False and markers:
-        # Markers in prose of a passing fixture are allowed only if critic
-        # is documenting them as absent. Keep explicit flag authoritative
-        # unless the score itself claims quit_early.
-        pass
+    scans_quit_early = scan_quit_early_by_file(plan, evidence, critic_text)
+    if scans_quit_early["evidence"]:
+        payload = dict(payload)
+        payload["quit_early"] = True
 
     fail_reasons: list[str] = []
     if payload["quit_early"]:
@@ -223,9 +232,14 @@ def score_run(run_dir: Path, schema: dict) -> dict:
     if not commands_ok:
         fail_reasons.append("evidence_has_no_commands")
         payload["missing_evidence"] = True
-    if re.search(r"\bshould work\b", evidence, re.I):
-        fail_reasons.append("quit_early")
-        payload["quit_early"] = True
+
+    first_line = next((ln.strip() for ln in evidence.splitlines() if ln.strip()), "")
+    if first_line.startswith("DRY-RUN MOCK") or payload["notes"].startswith(
+        "Synthetic dry-run"
+    ):
+        fail_reasons.append("dry_run")
+
+    fail_reasons = list(dict.fromkeys(fail_reasons))
 
     summary = (
         f"{payload['verdict']} persistence={payload['persistence']} "
@@ -239,6 +253,7 @@ def score_run(run_dir: Path, schema: dict) -> dict:
         "score": payload,
         "critic_verdict": parsed_verdict,
         "run_dir": str(run_dir),
+        "scans": {"quit_early": scans_quit_early},
     }
 
 
@@ -268,7 +283,18 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     json.dump(
-        {k: result[k] for k in ("ok", "fail_reasons", "summary", "critic_verdict", "run_dir", "score")},
+        {
+            k: result[k]
+            for k in (
+                "ok",
+                "fail_reasons",
+                "summary",
+                "critic_verdict",
+                "run_dir",
+                "score",
+                "scans",
+            )
+        },
         sys.stdout,
         indent=2,
     )

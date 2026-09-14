@@ -84,7 +84,8 @@ Commands listed in the task file under **Required verification**.
 ## VERDICT
 ACCEPT WITH WAIVERS
 """
-    evidence = f"""# Evidence (dry-run mock)
+    evidence = f"""DRY-RUN MOCK — not a live persist.
+# Evidence (dry-run mock)
 
 Skeptic notes: this folder was written by `python harness/run.py --dry-run`
 without spawning a model.
@@ -116,8 +117,8 @@ working tree and quote `git diff` here.
         "schema_version": 1,
         "run_id": run_dir.name,
         "task": rel_task,
-        "persistence": 1.0,
-        "rigor": 0.7,
+        "persistence": 0.0,
+        "rigor": 0.0,
         "verdict": "ACCEPT WITH WAIVERS",
         "quit_early": False,
         "missing_evidence": False,

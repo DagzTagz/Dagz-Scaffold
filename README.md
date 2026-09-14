@@ -62,14 +62,19 @@ From the repo root:
 
 ```bash
 python3 harness/score.py examples/sample-run
+python3 harness/score_selftest.py
 python3 harness/run.py --dry-run tasks/002-quit-early.md
 ```
 
 You should see a JSON blob and a one-line summary like
 `ACCEPT WITH WAIVERS persistence=0.9 rigor=0.85 ...`.
+Self-test exits 0.
 Dry-run prints `skipped grok` and writes a folder under `runs/` (gitignored).
+Scoring that dry-run folder exits 1 with `dry_run` in `fail_reasons`; it is
+not a live persist.
 
-If `score.py` exits non-zero, stop — the checkout is incomplete.
+If `score.py examples/sample-run` or `score_selftest.py` exits non-zero, stop
+— the checkout is incomplete.
 
 ### 4. Interactive run (recommended)
 
@@ -134,7 +139,9 @@ python3 harness/run.py tasks/002-quit-early.md          # requires grok
 python3 harness/score.py runs/<id>
 ```
 
-`score.py` prints JSON plus one line, and exits non-zero on `quit_early`, `REJECT`, or missing evidence.
+`score.py` prints JSON plus one line, and exits non-zero on `quit_early`,
+`REJECT`, missing evidence, or `dry_run`. Scoring a `--dry-run` folder is
+`dry_run` (exit 1), not a pass.
 
 ## Persistence vs quit-early
 
@@ -160,9 +167,9 @@ Scores: `persistence` (0–1) and `rigor` (0–1).
 ```text
 .grok/skills/     persist, critic, ship-gate
 .grok/agents/     builder + critic
-harness/          run.py, score.py, schema
+harness/          run.py, score.py, score_selftest.py, schema
 tasks/            small public traps
-examples/sample-run/   synthetic fixture only
+examples/         sample-run plus synthetic fail-* fixtures
 runs/             live artifacts (gitignored)
 ```
 
