@@ -48,9 +48,11 @@ Exit code is non-zero on `quit_early`, `REJECT`, missing evidence, `dry_run`,
 `required_verification`, or `task_contract_missing`.
 
 `must_appear` tokens are matched in command fences and each command's paired
-output fence only — not in prose, diff hunks, or python module bodies. Dump
-tokens containing ` -> ` must be a whole output line. When `red_then_green`
-is true, evidence needs two command fences and a fenced
+output fence only — not in prose, diff hunks, or python module bodies. A
+paired output fence must have an empty info-string (unlabeled); `diff` /
+`python` / `markdown` fences after a command do not count. Dump tokens
+containing ` -> ` must be a whole output line. When `red_then_green` is
+true, evidence needs two command fences and a fenced
 `Traceback (most recent call last)` or `AssertionError` strictly between them.
 
 `score.json` must validate against `harness/schema/run.schema.json`.

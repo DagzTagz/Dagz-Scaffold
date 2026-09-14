@@ -282,9 +282,11 @@ class ScoreFixtures(unittest.TestCase):
             self.assertEqual(result["fail_reasons"], [])
 
     def test_identities_only_in_diff_tmp_tree(self) -> None:
-        evidence = (
+        header = (
             "# Evidence (synthetic tmp-tree)\n\n"
             "Not a live grok session.\n\n"
+        )
+        source = (
             "```diff\n"
             "--- /dev/null\n"
             "+++ b/harness_tmp/celsius_to_kelvin.py\n"
@@ -299,16 +301,33 @@ class ScoreFixtures(unittest.TestCase):
             "ABS_ZERO = -273.15\n"
             "BELOW = -273.16\n"
             "```\n\n"
+        )
+        dummy = (
             "```\n"
             "python3 -c \"print('ok')\"\n"
             "```\n"
         )
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = _copy_sample(Path(tmp))
-            (run_dir / "evidence.md").write_text(evidence, encoding="utf-8")
-            result = score.score_run(run_dir, SCHEMA)
-            self.assertFalse(result["ok"], result)
-            self.assertIn("required_verification", result["fail_reasons"])
+        for label, body in (
+            ("source-then-command", source + dummy),
+            ("command-then-source", dummy + source),
+        ):
+            with self.subTest(order=label):
+                with tempfile.TemporaryDirectory() as tmp:
+                    run_dir = _copy_sample(Path(tmp))
+                    (run_dir / "evidence.md").write_text(
+                        header + body, encoding="utf-8"
+                    )
+                    result = score.score_run(run_dir, SCHEMA)
+                    self.assertFalse(result["ok"], result)
+                    self.assertIn("required_verification", result["fail_reasons"])
+
+    def test_indented_dump_line_hits(self) -> None:
+        self.assertTrue(
+            task_contract.token_hits("a -> True", ["    a -> True"])
+        )
+        self.assertFalse(
+            task_contract.token_hits("a -> True", ["    aba -> True"])
+        )
 
 
 class TaskContractLint(unittest.TestCase):
@@ -332,11 +351,11 @@ class TaskContractLint(unittest.TestCase):
                 folded_human = task_contract.fold_comma_ws(
                     task_contract.fold_quotes(human)
                 )
+                human_lines = human.splitlines()
                 for token in contract.must_appear:
                     if task_contract.DUMP_ARROW in token:
-                        self.assertIn(
-                            token,
-                            human,
+                        self.assertTrue(
+                            task_contract.token_hits(token, human_lines),
                             msg=f"{path.name} dump token {token!r} missing",
                         )
                         continue

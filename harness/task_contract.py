@@ -41,7 +41,7 @@ def fold_comma_ws(s: str) -> str:
 
 def token_hits(token: str, lines: list[str]) -> bool:
     needle = fold_comma_ws(fold_quotes(token))
-    folded = [fold_comma_ws(fold_quotes(ln.rstrip())) for ln in lines]
+    folded = [fold_comma_ws(fold_quotes(ln.strip())) for ln in lines]
     if DUMP_ARROW in needle:
         return needle in folded
     return any(needle in ln for ln in folded)

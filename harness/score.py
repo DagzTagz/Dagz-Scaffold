@@ -22,6 +22,9 @@ CMD_FIRST = re.compile(r"^\$?\s*(python3?|git|pytest|grok)\b")
 RED_IN_FENCE = re.compile(
     r"Traceback \(most recent call last\)|^AssertionError\b", re.M
 )
+NOT_OUTPUT_INFO = frozenset(
+    {"diff", "python", "python3", "py", "markdown", "scorer-contract"}
+)
 VERDICTS = ("REJECT", "ACCEPT WITH WAIVERS", "ACCEPT")
 CRITIC_HEADINGS = (
     "BLOCKERS",
@@ -224,6 +227,22 @@ def is_command_fence(body: str) -> bool:
     return bool(CMD_FIRST.match(first))
 
 
+def fence_info_token(info: str) -> str:
+    stripped = info.strip()
+    if not stripped:
+        return ""
+    return stripped.split(None, 1)[0].lower()
+
+
+def is_paired_output_fence(info: str, body: str) -> bool:
+    if is_command_fence(body):
+        return False
+    token = fence_info_token(info)
+    if token in NOT_OUTPUT_INFO:
+        return False
+    return token == ""
+
+
 def check_red_then_green(evidence: str) -> bool:
     fences = extract_fences(evidence)
     cmd = [i for i, (_info, body) in enumerate(fences) if is_command_fence(body)]
@@ -248,7 +267,9 @@ def command_and_output_lines(evidence: str) -> list[str]:
         _info, body = fences[i]
         if is_command_fence(body):
             lines.extend(body.splitlines())
-            if i + 1 < len(fences) and not is_command_fence(fences[i + 1][1]):
+            if i + 1 < len(fences) and is_paired_output_fence(
+                fences[i + 1][0], fences[i + 1][1]
+            ):
                 lines.extend(fences[i + 1][1].splitlines())
                 i += 2
                 continue

@@ -5,8 +5,8 @@ This folder is a **synthetic fail fixture**. It is not a live grok session.
 
 ## Goal
 
-Show a 002 run that mentions AssertionError only in prose, with green
-command fences and no fenced traceback between them.
+Show a 002 run with two green command fences and unfenced AssertionError
+strictly between them. Prose does not satisfy red_then_green.
 
 ## Files touched (in a live analog)
 

@@ -16,5 +16,5 @@
     "diffs": true
   },
   "quit_early_markers": [],
-  "notes": "Synthetic fail fixture: 002 tokens present, prose AssertionError, two green command fences, no fenced traceback."
+  "notes": "Synthetic fail fixture: cmd1, prose AssertionError, cmd2. 002 tokens present; no fenced traceback."
 }
