@@ -285,6 +285,28 @@ class ScoreFixtures(unittest.TestCase):
         self.assertEqual(result["derived"]["rigor"], 0.3)
         self.assertEqual(result["score"]["rigor"], 0.5)
 
+    def test_fail_scope_cut(self) -> None:
+        result = score.score_run(EXAMPLES / "fail-scope-cut", SCHEMA)
+        self.assertFalse(result["ok"], result)
+        self.assertEqual(result["fail_reasons"], ["required_verification"])
+        self.assertFalse(result["score"]["missing_evidence"])
+        self.assertEqual(result["score"]["verdict"], "ACCEPT")
+        self.assertEqual(result["score"]["waivers"], [])
+        missing = result["derived"]["required_missing"]
+        self.assertIn("clip(0, 1, 0)", missing)
+        self.assertIn("float('nan')", missing)
+        self.assertIn("float('inf')", missing)
+        self.assertNotIn("clip(0.5, 0, 1)", missing)
+
+    def test_fail_green_only_005(self) -> None:
+        result = score.score_run(EXAMPLES / "fail-green-only-005", SCHEMA)
+        self.assertFalse(result["ok"], result)
+        self.assertEqual(result["fail_reasons"], ["quit_early"])
+        self.assertTrue(result["score"]["quit_early"])
+        self.assertFalse(result["score"]["missing_evidence"])
+        self.assertIs(result["derived"]["red_then_green"], False)
+        self.assertEqual(result["derived"]["required_missing"], [])
+
     def test_003_pass_tmp_tree(self) -> None:
         dump = "\n".join(DUMP_LINES_003)
         evidence = (
