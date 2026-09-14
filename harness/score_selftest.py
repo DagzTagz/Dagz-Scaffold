@@ -17,6 +17,7 @@ sys.path.insert(0, str(HARNESS_DIR))
 
 import score  # noqa: E402
 import task_contract  # noqa: E402
+from ship_gate_selftest import ShipGate  # noqa: E402, F401
 
 SCHEMA = score.load_schema(HARNESS_DIR / "schema" / "run.schema.json")
 EXAMPLES = REPO_ROOT / "examples"

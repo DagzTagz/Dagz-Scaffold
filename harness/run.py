@@ -157,7 +157,8 @@ Task file: {rel_task}
 Write all artifacts into: {rel_run}/
 Required files: plan.md, critic.md, evidence.md, score.json plus real diffs.
 
-Loop: plan first, then builder, then critic, then python harness/score.py {rel_run}.
+Loop: plan first, then builder, then critic, then python harness/score.py {rel_run}, then python harness/ship_gate.py {rel_run} --git-checks.
+If ship_gate.py exits non-zero, the run is not done. Do not skip this program.
 REJECT returns to the builder. Do not quit early. Do not declare done without score.json.
 
 Task:

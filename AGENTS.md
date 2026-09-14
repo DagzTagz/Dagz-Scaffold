@@ -18,8 +18,10 @@ For any non-trivial work (more than a one-line fix or a pure question):
    `BLOCKERS`, `RISKS`, `NITS`, `MISSING EVIDENCE`, `VERDICT`.
 4. **Score.** `python harness/score.py runs/<id>` must run. Refuse to finish
    without `runs/<id>/score.json`.
-5. **Ship-gate.** `REJECT` returns work to the builder. The run cannot complete
-   on `REJECT`. `ACCEPT WITH WAIVERS` requires explicit waivers in `score.json`.
+5. **Ship-gate.** Run `python harness/ship_gate.py runs/<id> --git-checks`. If
+   it exits non-zero, the run is not done. Do not skip this program. `REJECT`
+   returns work to the builder. The run cannot complete on `REJECT`.
+   `ACCEPT WITH WAIVERS` requires explicit waivers in `score.json`.
 
 Invoke `/persist` to run this loop. Invoke `/ship-gate` before you say done.
 

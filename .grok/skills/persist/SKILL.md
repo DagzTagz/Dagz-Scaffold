@@ -31,7 +31,7 @@ A task is not done until `runs/<id>/` contains `plan.md`, diffs, `critic.md`, `e
 
 6. **Score.** Run `python harness/score.py runs/<id>` (or write `score.json` that the scorer accepts). Persistence and rigor are 0–1. Waivers must be explicit objects with `id` and `reason`.
 
-7. **Ship-gate.** Follow `.grok/skills/ship-gate/SKILL.md`. Refuse to say done without a passing score and a non-`REJECT` verdict.
+7. **Ship-gate.** Run `python harness/ship_gate.py runs/<id> --git-checks`. If it exits non-zero, the run is not done. Do not skip this program. `/persist` cannot skip this program.
 
 ## Refuse to finish when
 
@@ -40,6 +40,7 @@ A task is not done until `runs/<id>/` contains `plan.md`, diffs, `critic.md`, `e
 - evidence would not convince a skeptic who was not in this session
 - verification commands were not run
 - any quit-early marker fired (done-before-verify, "too hard", silent scope cut, stop after one failed check, skipped check)
+- `python harness/ship_gate.py runs/<id> --git-checks` exits non-zero
 
 ## Output
 
