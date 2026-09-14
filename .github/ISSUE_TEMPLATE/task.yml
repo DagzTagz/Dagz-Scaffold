@@ -37,7 +37,7 @@ body:
     id: verification
     attributes:
       label: Required verification
-      description: Include a `scorer-contract` JSON fence; `score_selftest.py` will lint it.
+      description: Include a scorer-contract JSON fence (must_appear, red_then_green). See docs/tasks.md. `score_selftest.py` lints it.
     validations:
       required: true
   - type: textarea

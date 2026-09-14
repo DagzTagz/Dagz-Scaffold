@@ -29,8 +29,9 @@ body:
       label: Repro
       description: Commands only. Prefer `--dry-run` and `examples/sample-run`.
       value: |
-        python harness/score.py examples/sample-run
-        python harness/run.py --dry-run tasks/002-quit-early.md
+        python3 harness/score.py examples/sample-run
+        python3 harness/score_selftest.py
+        python3 harness/ship_gate.py examples/sample-run
     validations:
       required: true
   - type: input

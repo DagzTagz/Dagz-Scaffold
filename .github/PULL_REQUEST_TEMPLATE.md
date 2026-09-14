@@ -1,19 +1,27 @@
 ## What
 
--
+<!-- One or two sentences. What changed, and why. -->
+
+## How to test
+
+```bash
+python3 harness/score.py examples/sample-run
+python3 harness/score_selftest.py
+python3 harness/ship_gate.py examples/sample-run
+```
 
 ## Checklist
 
 - [ ] No secrets, tokens, `.env` files, keys, or live `runs/` artifacts
-- [ ] `.gitignore` still ignores local runs and secrets (`git check-ignore -v .env runs/foo.json .venv/bin/python`)
-- [ ] `python harness/run.py --dry-run tasks/002-quit-early.md` (writes files; no network, no model)
-- [ ] Scoring that dry-run dir exits 1 with `dry_run` (do not treat it as a pass)
-- [ ] `python harness/score.py examples/sample-run` exits 0
-- [ ] `python harness/score_selftest.py` exits 0
-- [ ] No GitHub Actions that check out untrusted PRs with write credentials
+- [ ] `.gitignore` still ignores local runs and secrets (`git check-ignore -v .env runs/foo.json`)
+- [ ] Smoke commands above exit 0
+- [ ] If I used `--dry-run`, I did **not** treat scoring that folder as a pass (`dry_run` / exit 1)
+- [ ] Docs updated if usage changed ([getting-started.md](../getting-started.md), [docs/](../docs/))
+- [ ] No GitHub Actions that check out untrusted PRs with **write** credentials
 - [ ] No hooks that upload the repo, phone home, or read parent directories
 
-## Task / score (if this PR is a harness change)
+## Task / harness (if this PR changes the scorer or a trap)
 
 - Task file:
-- Scorer result:
+- `score_selftest.py`:
+- AI assistance (if any):

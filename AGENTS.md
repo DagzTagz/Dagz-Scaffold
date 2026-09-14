@@ -2,6 +2,8 @@
 
 Unofficial DagzTagz project. Not an xAI product. Powered by the grok CLI.
 
+Humans: start at [getting-started.md](getting-started.md), not this file.
+
 You are doing agentic engineering in this repo. A task is not done because you
 feel done. It is done when the artifacts exist and the critic has signed off.
 

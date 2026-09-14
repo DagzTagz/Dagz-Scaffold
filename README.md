@@ -1,131 +1,40 @@
 # Dagz-Scaffold
 
+**An open-source persistence harness for agentic engineering.**  
 **Unofficial DagzTagz project. Not an xAI product.** Powered by [Grok Build](https://github.com/xai-org/grok-cli) / the `grok` CLI under **your** account and terms.
 
-Sister idea to [dagztagz-hypothesis-engine](https://github.com/DagzTagz/dagztagz-hypothesis-engine) (propose → adversarial verify → evidence), but this repo is a persistence + self-check harness for **agentic engineering work**, not science hypotheses.
+Sister idea to [dagztagz-hypothesis-engine](https://github.com/DagzTagz/dagztagz-hypothesis-engine) (propose → adversarial verify → evidence). This repo does the same loop for **coding agents**, not scientific hypotheses.
 
-Target users: people who already have the `grok` CLI installed.
+> **Current status:** **v0.1.0** · public trap tasks 001–005 · stdlib-only scorer.  
+> **Not a finished product** — iterative, disclosed early. History: [CHANGELOG.md](CHANGELOG.md).
+
+---
 
 ## Why
 
-Agents quit early on hard tasks and declare done without checking their work. A task here is **not done** until all of these exist:
+Agents quit after the first red test, drop a constraint, and say they are done. A task here is **not done** until a folder a skeptic can audit exists:
 
 1. `plan.md`
-2. diffs / code changes
-3. `critic.md` with **BLOCKERS**, **RISKS**, **NITS**, **MISSING EVIDENCE**, and **VERDICT**
-4. `evidence.md` that a skeptic can read without the chat
+2. real diffs / code
+3. `critic.md` with **BLOCKERS**, **RISKS**, **NITS**, **MISSING EVIDENCE**, **VERDICT**
+4. `evidence.md` with commands and output
 5. `score.json`
 
 Verdicts: `REJECT` | `ACCEPT WITH WAIVERS` | `ACCEPT`.  
-`REJECT` returns work to the builder. The run cannot complete on `REJECT`. Waivers must be explicit.
+`REJECT` returns work to the builder. Waivers must be explicit objects with `id` and `reason`.
 
-## Requirements
+## What ships today
 
-- Python **3.11+** (stdlib only for v0 — no pip packages)
-- `grok` CLI for live runs (`grok -p`)
-- Git
+- **Plan → builder → critic → evidence → score** loop (`/persist`, `/critic`, `/ship-gate`)
+- **Stdlib scorer** (`python harness/score.py`) — local files only by default
+- **Fail-closed quit-early** on evidence phrases; task `scorer-contract` JSON; `ship_gate.py`
+- **Optional `--replay`** — AST-allowlisted `python -c` and allowlisted `git` as a **local** subprocess (default **off**)
+- **Public traps** in `tasks/` (units, quit-early, fake-green, scope-cut, missing evidence)
+- **Synthetic fixtures** in `examples/` (pass + fail). Live `runs/` stay gitignored
 
-`--dry-run` does **not** call the network or the model.
+Target users: people who already have the `grok` CLI, or anyone who wants to **score a persist folder** with Python 3.11+ and no pip.
 
-`score.py` reads local files. `--replay` (default **off**) re-runs allowlisted
-`python -c` and `git` from evidence as a **local** subprocess. It does not
-call the network or the model. `python3 harness/score.py examples/sample-run`
-stays subprocess-free.
-
-## How to run on a Linux VM
-
-This is the path for a normal Linux VM (Ubuntu 22.04/24.04 or similar) with a
-terminal. Use `python3` if `python` is not installed.
-
-Live Grok calls use **your** `grok` login and xAI terms. Dry-run and scoring
-do not call the model.
-
-### 1. Check tools
-
-```bash
-python3 --version    # need 3.11 or newer
-git --version
-command -v grok && grok --version   # only required for live runs
-```
-
-If `python3` is missing: `sudo apt update && sudo apt install -y python3 git`.
-If `grok` is missing, install the [Grok Build CLI](https://github.com/xai-org/grok-cli)
-and log in on that VM before a live run.
-
-### 2. Get the repo
-
-```bash
-git clone https://github.com/DagzTagz/Dagz-Scaffold.git
-cd Dagz-Scaffold
-```
-
-Already have a clone? `cd` into it and `git pull`.
-
-### 3. Smoke test (no Grok, no model)
-
-From the repo root:
-
-```bash
-python3 harness/score.py examples/sample-run
-python3 harness/score_selftest.py
-python3 harness/ship_gate.py examples/sample-run
-python3 harness/run.py --dry-run tasks/002-quit-early.md
-```
-
-You should see a JSON blob and a one-line summary like
-`ACCEPT WITH WAIVERS persistence=1.0 rigor=1.0 ...` (derived caps;
-`score.json` claims stay `0.9` / `0.85` and do not fail `ok`).
-Self-test exits 0.
-`ship_gate.py examples/sample-run` prints `SHIP-GATE: PASS` (no `--git-checks`;
-that flag reads this clone's index).
-Dry-run prints `skipped grok` and writes a folder under `runs/` (gitignored).
-Scoring that dry-run folder exits 1 with `dry_run` in `fail_reasons`; it is
-not a live persist.
-Do not pass `--replay` on the sample-run smoke; it is off by default so that
-command stays a local-files read with no subprocess.
-
-If `score.py examples/sample-run`, `score_selftest.py`, or
-`ship_gate.py examples/sample-run` exits non-zero, stop — the checkout is
-incomplete.
-
-### 4. Interactive run (recommended)
-
-Still in the repo root:
-
-```bash
-grok
-```
-
-Then in the Grok session:
-
-1. Type `/persist` and point it at a task, e.g. `tasks/002-quit-early.md`.
-2. Let it write `runs/<id>/plan.md`, implement, then run `/critic`.
-3. `REJECT` means more work. Do not ship it.
-4. Type `/ship-gate` before you call it done.
-5. In another terminal (same repo):
-
-```bash
-ls runs/
-python3 harness/score.py runs/<id>
-```
-
-Replace `<id>` with the folder name you actually got.
-
-### 5. Headless live run
-
-Calls `grok -p`. Costs/usage follow your Grok account.
-
-```bash
-python3 harness/run.py tasks/002-quit-early.md
-python3 harness/score.py runs/<the-new-id>
-```
-
-### 6. Do not commit live output
-
-`runs/` (except `runs/.gitkeep`), `.env`, keys, and Grok session dumps stay
-local. See [SECURITY.md](SECURITY.md).
-
-## The loop (under 2 minutes)
+## How it works
 
 ```text
 task file  →  plan.md  →  builder diffs  →  critic.md  →  evidence.md  →  score.json
@@ -133,46 +42,77 @@ task file  →  plan.md  →  builder diffs  →  critic.md  →  evidence.md  �
                  └──────── retry with a new hypothesis ─┘
 ```
 
-1. Open this repo in `grok` (or run the harness).
-2. Invoke **`/persist`** on a task. That creates `runs/<id>/`, demands a plan, then builder → critic.
-3. Critic is hostile. `REJECT` means more work, not a polish pass.
-4. Write `evidence.md` so someone who was **not** in the session can still believe you.
-5. Score the run locally:
+`score.py` is a cheap lie detector, not a scientist. It checks process (files, verdicts, required tokens, replay). Correctness still sits with you and the critic.
 
-```bash
-python3 harness/score.py examples/sample-run
-```
+Full walkthrough: **[getting-started.md](getting-started.md)**.  
+Scorer details: **[docs/scorer.md](docs/scorer.md)**.  
+Adding a trap: **[docs/tasks.md](docs/tasks.md)**.
 
-Live wrapper (calls `grok -p` unless you pass `--dry-run`):
+---
 
-```bash
-python3 harness/run.py --dry-run tasks/002-quit-early.md
-python3 harness/run.py tasks/002-quit-early.md          # requires grok
-python3 harness/score.py runs/<id>
-```
+## Getting started
 
-`score.py` prints JSON plus one line, and exits non-zero on `quit_early`,
-`REJECT`, missing evidence, or `dry_run`. Scoring a `--dry-run` folder is
-`dry_run` (exit 1), not a pass.
+> ### Smoke test first (no Grok, $0)
+>
+> ```bash
+> git clone https://github.com/DagzTagz/Dagz-Scaffold.git
+> cd Dagz-Scaffold
+> python3 harness/score.py examples/sample-run
+> python3 harness/score_selftest.py
+> python3 harness/ship_gate.py examples/sample-run
+> ```
+>
+> You should see `ok: true` / `SHIP-GATE: PASS` and a self-test OK.  
+> Then read **[getting-started.md](getting-started.md)** before a live `/persist`.
 
-## Persistence vs quit-early
+### Dry-run vs live
 
-**Quit-early** if the agent:
+| Dry-run / score smoke | Live `grok` / `run.py` without `--dry-run` |
+|----------------------|--------------------------------------------|
+| No `grok` login | Requires your Grok CLI login |
+| No model call | May send repo context to xAI |
+| **$0** | **Your Grok / xAI account** |
+| `--dry-run` writes a mock `runs/` folder that **scores as `dry_run` (exit 1)** | Real persist can `ACCEPT` |
 
-- declares done before verification
-- calls the task too hard without exhausting the plan
-- silently shrinks the problem
-- stops after one failed check
-- never attempts a check the critic later finds
+`--dry-run` does **not** call the network or the model. Scoring that mock folder is **not** a pass.
 
-**Persistent** if it:
+### Disclosures
 
-- follows the plan through verification
-- turns failed checks into a new hypothesis and another attempt
-- uses the budget or reaches signed-off done
-- leaves evidence that would convince a skeptic who was not in the session
+- **Not an official xAI product.** “Powered by Grok” means the live path can call the Grok CLI; it does not mean endorsement.
+- **Your account, your terms.** Live runs use **your** Grok login. This project does not pay for usage.
+- **Do not commit secrets or live `runs/`.** See [SECURITY.md](SECURITY.md).
+- **Experimental.** Trap tasks are a gym for agents, not production apps.
 
-Scores: `persistence` (0–1) and `rigor` (0–1).
+---
+
+## Contributing
+
+Docs, trap ideas, failing fixtures, and harness patches are all useful. You do not need to be a professional programmer.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+## Roadmap
+
+### v0.1 — current
+
+- [x] Persist / critic / ship-gate skills
+- [x] Evidence-scoped quit-early + fail fixtures
+- [x] Task `scorer-contract` (`must_appear`, `red_then_green`)
+- [x] `ship_gate.py` (optional `--git-checks`)
+- [x] Optional AST replay (`--replay`, default off)
+- [x] Derived persistence/rigor printed; claims stay in `score.json`
+
+### Next
+
+- [ ] GitHub-facing docs at hypothesis-engine quality (this drop)
+- [ ] Read-only CI (`score_selftest.py` + sample-run + hermetic ship-gate) — no secrets, no `grok`
+- [ ] More public traps; keep live `runs/` gitignored
+
+### Non-goals
+
+- Scoring raw `~/.grok/sessions/` chat dumps
+- Calling the model from `score.py`
+- Dashboards, extra pip packages, schema v2 for derived fields
 
 ## Layout
 
@@ -182,17 +122,25 @@ Scores: `persistence` (0–1) and `rigor` (0–1).
 harness/          run.py, score.py, replay.py, score_selftest.py, ship_gate.py, schema
 tasks/            small public traps
 examples/         sample-run plus synthetic fail-* fixtures
+docs/             scorer + task authoring
 runs/             live artifacts (gitignored)
 ```
-
-## Do not commit
-
-- `runs/` (except `runs/.gitkeep`)
-- secrets, `.env`, keys, tokens, `auth.json`, `credentials.json`
-- Grok session dumps (`.grok/sessions/`, `.grok/memory/`, `.grok/cache/`)
-
-See [SECURITY.md](SECURITY.md). Report vulnerabilities privately; do not paste secrets into issues.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+Hypothesis Engine is Apache-2.0; this repo stays MIT unless maintainers decide otherwise.
+
+## Acknowledgments
+
+- **DagzTagz** community
+- **xAI / Grok** — Grok Build CLI and pair-programming assistance (**not** an official product)
+- [dagztagz-hypothesis-engine](https://github.com/DagzTagz/dagztagz-hypothesis-engine) — the documentation and verify-then-evidence pattern
+
+## Disclaimer
+
+**Dagz-Scaffold** is a community project and is **not** an official product of xAI.  
+It is an experimental harness for agent engineering. Always read `evidence.md` yourself. Prefer the smoke commands above until you intentionally run live `grok`.
+
+**Let’s leave folders a skeptic can audit.**
