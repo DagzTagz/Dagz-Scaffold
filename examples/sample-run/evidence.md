@@ -104,13 +104,15 @@ Secrets scan commands and result:
 ```
 git status --ignored
 git ls-files
-git grep -nI -E 'XAI_API_KEY|GITHUB_TOKEN|GH_TOKEN|BEGIN OPENSSH PRIVATE KEY|AKIA[0-9A-Z]{16}|xai-[A-Za-z0-9_-]{20,}' || true
+git grep -nI -E 'XAI_API_KEY|GITHUB_TOKEN|GH_TOKEN|BEGIN OPENSSH PRIVATE' \
+  -E 'KEY|AKIA[0-9A-Z]{16}|xai-[A-Za-z0-9_-]{20,}' || true
 git check-ignore -v .env runs/test.json .venv/bin/python auth.json
 ```
 
 - No live secrets in the tree.
-- `.env.example` contains dummy names `XAI_API_KEY=` and `GITHUB_TOKEN=`
-  with **empty** values (name-only hit).
+- `.env.example` contains dummy names with **empty** values (name-only hit):
+  XAI_API_KEY=
+  GITHUB_TOKEN=
 - Live dry-run output lives under `runs/` and is ignored (`!!` in
   `git status --ignored`). It is not the sample-run fixture and will not
   be staged.

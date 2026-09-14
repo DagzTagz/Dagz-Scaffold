@@ -103,6 +103,18 @@ class ShipGate(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("SHIP-GATE: PASS", completed.stdout)
 
+    def test_sample_run_evidence_blob_is_not_secret_content(self) -> None:
+        blob = (SAMPLE / "evidence.md").read_text(encoding="utf-8")
+        self.assertIsNone(ship_gate.SECRET_CONTENT.search(blob))
+        rel = "examples/sample-run/evidence.md"
+        runner = _map_runner(rel + "\0", {rel: blob})
+        self.assertEqual(ship_gate.git_index_blocks(REPO_ROOT, runner=runner), [])
+        code, out, _ = _capture_main(
+            [str(SAMPLE), "--git-checks"], git_runner=runner
+        )
+        self.assertEqual(code, 0, out)
+        self.assertIn("SHIP-GATE: PASS", out)
+
     def test_fail_reject_block(self) -> None:
         code, out, err = _capture_main([str(EXAMPLES / "fail-reject")])
         self.assertEqual(code, 1, err)

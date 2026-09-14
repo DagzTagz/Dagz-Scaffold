@@ -31,6 +31,7 @@ Public tasks are **small traps**, not apps.
 python harness/run.py --dry-run tasks/00N-short-name.md
 python harness/score.py examples/sample-run
 python harness/score_selftest.py
+python harness/ship_gate.py examples/sample-run
 ```
 
 Dry-run writes files and does not call the model. Scoring that dry-run
@@ -41,7 +42,9 @@ directory exits 1 with `dry_run` in `fail_reasons`; that is expected.
 ```bash
 python harness/score.py examples/sample-run
 python harness/score_selftest.py
+python harness/ship_gate.py examples/sample-run
 python harness/score.py runs/<id>    # local only; do not commit
+python harness/ship_gate.py runs/<id> --git-checks    # local only; do not skip
 ```
 
 Exit code is non-zero on `quit_early`, `REJECT`, missing evidence, `dry_run`,
@@ -68,6 +71,7 @@ Use the PR template checklist:
 - `python harness/run.py --dry-run tasks/002-quit-early.md` (writes files; scoring that dir is `dry_run`)
 - `python harness/score.py examples/sample-run`
 - `python harness/score_selftest.py`
+- `python harness/ship_gate.py examples/sample-run` (PASS; do not pass `--git-checks` here)
 
 Do not add GitHub Actions that check out untrusted PRs with write credentials.
 Do not add hooks that upload the tree or read `$HOME` outside this project.

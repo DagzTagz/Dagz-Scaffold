@@ -63,18 +63,22 @@ From the repo root:
 ```bash
 python3 harness/score.py examples/sample-run
 python3 harness/score_selftest.py
+python3 harness/ship_gate.py examples/sample-run
 python3 harness/run.py --dry-run tasks/002-quit-early.md
 ```
 
 You should see a JSON blob and a one-line summary like
 `ACCEPT WITH WAIVERS persistence=0.9 rigor=0.85 ...`.
 Self-test exits 0.
+`ship_gate.py examples/sample-run` prints `SHIP-GATE: PASS` (no `--git-checks`;
+that flag reads this clone's index).
 Dry-run prints `skipped grok` and writes a folder under `runs/` (gitignored).
 Scoring that dry-run folder exits 1 with `dry_run` in `fail_reasons`; it is
 not a live persist.
 
-If `score.py examples/sample-run` or `score_selftest.py` exits non-zero, stop
-— the checkout is incomplete.
+If `score.py examples/sample-run`, `score_selftest.py`, or
+`ship_gate.py examples/sample-run` exits non-zero, stop — the checkout is
+incomplete.
 
 ### 4. Interactive run (recommended)
 
@@ -167,7 +171,7 @@ Scores: `persistence` (0–1) and `rigor` (0–1).
 ```text
 .grok/skills/     persist, critic, ship-gate
 .grok/agents/     builder + critic
-harness/          run.py, score.py, score_selftest.py, schema
+harness/          run.py, score.py, score_selftest.py, ship_gate.py, schema
 tasks/            small public traps
 examples/         sample-run plus synthetic fail-* fixtures
 runs/             live artifacts (gitignored)
