@@ -12,7 +12,6 @@ import re
 import sys
 from pathlib import Path
 
-from replay import is_under_examples, replay_evidence
 from task_contract import (
     ContractError,
     extract_fences,
@@ -383,6 +382,10 @@ def score_run(run_dir: Path, schema: dict, replay: bool = False) -> dict:
 
     replay_doc: dict | None = None
     if replay:
+        # Lazy: replay imports CMD_FIRST / RED_IN_FENCE / is_command_fence from
+        # this module; a top-level import would cycle.
+        from replay import is_under_examples, replay_evidence
+
         if is_under_examples(run_dir, REPO_ROOT):
             replay_doc = {"skipped": "examples fixture"}
         else:

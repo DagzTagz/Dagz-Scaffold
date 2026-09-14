@@ -520,6 +520,48 @@ class ReplaySandbox(unittest.TestCase):
                     self.assertTrue(result["unreplayable"], command)
                     self.assertEqual(result["pairs"][0]["action"], "denied", command)
 
+    def test_git_git_dir_not_spawned(self) -> None:
+        evidence = _fence("git --git-dir=/tmp/evil status")
+        with mock.patch("replay.subprocess.run") as mock_run:
+            result = replay.replay_evidence(evidence, repo_root=REPO_ROOT)
+            self.assertEqual(mock_run.call_count, 0)
+        self.assertTrue(result["unreplayable"])
+        self.assertEqual(result["pairs"][0]["action"], "denied")
+        with self.assertRaises(replay.ReplayDenied):
+            replay.classify_argv(
+                ["git", "--git-dir=/tmp/evil", "status"], REPO_ROOT
+            )
+
+    def test_git_path_config_and_output_flags_not_spawned(self) -> None:
+        commands = (
+            "git --git-dir=/tmp/evil status",
+            "git --work-tree=/tmp status",
+            "git --config-env=core.fsmonitor=/tmp/x status",
+            "git --exec-path=/tmp status",
+            "git --namespace=x status",
+            "git --bare status",
+            "git -C /tmp status",
+            "git -c core.fsmonitor=/bin/true status",
+            "git diff --output=/tmp/x",
+            "git diff --ext-diff",
+            "git status --upload-pack=/bin/true",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                evidence = _fence(command)
+                with mock.patch("replay.subprocess.run") as mock_run:
+                    result = replay.replay_evidence(evidence, repo_root=REPO_ROOT)
+                    self.assertEqual(mock_run.call_count, 0, command)
+                self.assertTrue(result["unreplayable"], command)
+                self.assertEqual(result["pairs"][0]["action"], "denied", command)
+                with self.assertRaises(replay.ReplayDenied):
+                    replay.classify_argv(command.split(), REPO_ROOT)
+
+    def test_shared_fence_regexes_come_from_score(self) -> None:
+        self.assertIs(replay.CMD_FIRST, score.CMD_FIRST)
+        self.assertIs(replay.RED_IN_FENCE, score.RED_IN_FENCE)
+        self.assertIs(replay.is_command_fence, score.is_command_fence)
+
     def test_harness_cli_skip_ok_without_spawning_score_py(self) -> None:
         evidence = (
             "# Evidence (synthetic tmp-tree)\n\n"

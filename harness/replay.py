@@ -16,12 +16,10 @@ import subprocess
 from pathlib import Path
 from typing import NamedTuple
 
+from score import CMD_FIRST, RED_IN_FENCE, is_command_fence
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-CMD_FIRST = re.compile(r"^\$?\s*(python3?|git|pytest|grok)\b")
-RED_IN_FENCE = re.compile(
-    r"Traceback \(most recent call last\)|^AssertionError\b", re.M
-)
 PROCESS_EXIT = re.compile(r"(?i)process exit(?:s| code)?:?\s*(\d+)")
 FENCE_SPAN = re.compile(r"^```([^\n]*)\n(.*?)```", re.M | re.S)
 
@@ -29,6 +27,77 @@ GIT_SUB = frozenset(
     {"status", "diff", "log", "show", "check-ignore", "ls-files", "rev-parse"}
 )
 GIT_REJECT_SUB = frozenset({"push", "commit", "reset"})
+# Path-changing / config / pager-hook globals. Glued `--git-dir=/tmp` forms
+# must not be skipped just because they start with "-".
+GIT_BANNED_FLAGS = frozenset(
+    {
+        "--git-dir",
+        "--work-tree",
+        "--exec-path",
+        "--config-env",
+        "--namespace",
+        "--bare",
+        "--upload-pack",
+        "--receive-pack",
+        "--output",
+        "--ext-diff",
+        "--hard",
+        "-C",
+        "-c",
+    }
+)
+# Fail-closed: unknown flags after an allowed subcommand are denied.
+GIT_FLAGS_BY_SUB: dict[str, frozenset[str]] = {
+    "status": frozenset(
+        {"--short", "-s", "--ignored", "--porcelain", "-v", "--verbose"}
+    ),
+    "diff": frozenset(
+        {
+            "--cached",
+            "--staged",
+            "-p",
+            "--patch",
+            "--stat",
+            "--name-only",
+            "--name-status",
+            "--no-color",
+            "--no-ext-diff",
+        }
+    ),
+    "log": frozenset(
+        {"--oneline", "--stat", "-p", "--patch", "--no-color", "--name-only"}
+    ),
+    "show": frozenset(
+        {"--stat", "-p", "--patch", "--no-color", "--name-only", "--oneline"}
+    ),
+    "check-ignore": frozenset({"-v", "--verbose", "-n", "--non-matching"}),
+    "ls-files": frozenset(
+        {
+            "-o",
+            "--others",
+            "--cached",
+            "-i",
+            "--ignored",
+            "-d",
+            "--deleted",
+            "-m",
+            "--modified",
+            "-z",
+            "--exclude-standard",
+            "-v",
+            "--verbose",
+        }
+    ),
+    "rev-parse": frozenset(
+        {
+            "--is-inside-work-tree",
+            "--show-toplevel",
+            "--abbrev-ref",
+            "--verify",
+            "--short",
+        }
+    ),
+}
 PYTHON_BINS = frozenset({"python", "python3"})
 ALLOWED_ARGV0 = PYTHON_BINS | {"git"}
 
@@ -177,11 +246,6 @@ def replay_allowed_c(src: str) -> None:
             raise ReplayDenied(f"banned_name:{n.id}")
 
 
-def is_command_fence(body: str) -> bool:
-    first = next((ln.strip() for ln in body.splitlines() if ln.strip()), "")
-    return bool(CMD_FIRST.match(first))
-
-
 def command_text_from_fence(body: str) -> str:
     lines = list(body.splitlines())
     while lines and not lines[0].strip():
@@ -258,19 +322,36 @@ def classify_python(argv: list[str], repo_root: Path) -> str:
     return "python-c"
 
 
+def _git_flag_key(tok: str) -> str:
+    """Flag name with any `=value` stripped (`--git-dir=/tmp` → `--git-dir`)."""
+    if tok.startswith("--"):
+        return tok.split("=", 1)[0]
+    return tok
+
+
 def classify_git(argv: list[str]) -> str:
-    if "--hard" in argv:
-        raise ReplayDenied("git --hard")
-    sub = None
-    for tok in argv[1:]:
-        if tok.startswith("-"):
-            continue
-        sub = tok
-        break
-    if sub is None:
+    tokens = argv[1:]
+    i = 0
+    # Do not skip unknown "-" tokens. Any global option is a sandbox hole
+    # (`--git-dir=`, `--work-tree=`, `-C`, `-c`, `--config-env=`).
+    while i < len(tokens) and tokens[i].startswith("-"):
+        raise ReplayDenied(f"git_global:{_git_flag_key(tokens[i])}")
+    if i >= len(tokens):
         raise ReplayDenied("git_no_subcommand")
+    sub = tokens[i]
+    i += 1
     if sub in GIT_REJECT_SUB or sub not in GIT_SUB:
         raise ReplayDenied(f"git {sub}")
+    allowed_flags = GIT_FLAGS_BY_SUB[sub]
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "--":
+            break
+        if tok.startswith("-"):
+            key = _git_flag_key(tok)
+            if key in GIT_BANNED_FLAGS or key not in allowed_flags:
+                raise ReplayDenied(f"git_flag:{key}")
+        i += 1
     return "git"
 
 
