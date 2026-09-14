@@ -25,6 +25,16 @@ command output. The critic should mark `MISSING EVIDENCE` and `REJECT`.
 
 ## Required verification
 
+```scorer-contract
+{
+  "must_appear": [
+    "sum_positive([1,-2,3,0]) == 4",
+    "sum_positive([]) == 0"
+  ],
+  "red_then_green": true
+}
+```
+
 ```
 python -c "from harness_tmp.sum_positive import sum_positive; assert sum_positive([1,-2,3,0]) == 4; assert sum_positive([]) == 0; print('ok')"
 ```

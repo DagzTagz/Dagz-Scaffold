@@ -15,7 +15,10 @@ Process:
 1. Read `runs/<id>/plan.md` and the task file. Do not shrink the goal.
 2. Make the diffs. Stay inside the plan's file list unless you update the plan.
 3. Run the required verification. Capture commands and output in
-   `runs/<id>/evidence.md`.
+   `runs/<id>/evidence.md`. Print dump tokens (`INPUT -> EXPECTED`) as their
+   own output lines when the contract lists them. When `red_then_green` is
+   true, quote a fenced traceback between two command fences. Do not paste
+   the task's Hidden failure mode into evidence prose.
 4. If a check fails: write a new hypothesis, change the approach, run again.
    Do not stop after one failure. Do not call it too hard while plan steps remain.
 5. When you believe the checks pass, stop and hand off to the critic. Do not

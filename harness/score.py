@@ -9,7 +9,19 @@ import re
 import sys
 from pathlib import Path
 
+from task_contract import (
+    ContractError,
+    extract_fences,
+    load_task_contract,
+    token_hits,
+)
+
 REQUIRED_FILES = ("plan.md", "critic.md", "evidence.md", "score.json")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+CMD_FIRST = re.compile(r"^\$?\s*(python3?|git|pytest|grok)\b")
+RED_IN_FENCE = re.compile(
+    r"Traceback \(most recent call last\)|^AssertionError\b", re.M
+)
 VERDICTS = ("REJECT", "ACCEPT WITH WAIVERS", "ACCEPT")
 CRITIC_HEADINGS = (
     "BLOCKERS",
@@ -207,6 +219,43 @@ def evidence_has_commands(text: str) -> bool:
     ) or "```" in text
 
 
+def is_command_fence(body: str) -> bool:
+    first = next((ln.strip() for ln in body.splitlines() if ln.strip()), "")
+    return bool(CMD_FIRST.match(first))
+
+
+def check_red_then_green(evidence: str) -> bool:
+    fences = extract_fences(evidence)
+    cmd = [i for i, (_info, body) in enumerate(fences) if is_command_fence(body)]
+    if len(cmd) < 2:
+        return False
+    lo, hi = cmd[0], cmd[-1]
+    for i in range(lo + 1, hi):
+        if RED_IN_FENCE.search(fences[i][1]):
+            return True
+    return False
+
+
+def count_command_blocks(evidence: str) -> int:
+    return sum(1 for _info, body in extract_fences(evidence) if is_command_fence(body))
+
+
+def command_and_output_lines(evidence: str) -> list[str]:
+    fences = extract_fences(evidence)
+    lines: list[str] = []
+    i = 0
+    while i < len(fences):
+        _info, body = fences[i]
+        if is_command_fence(body):
+            lines.extend(body.splitlines())
+            if i + 1 < len(fences) and not is_command_fence(fences[i + 1][1]):
+                lines.extend(fences[i + 1][1].splitlines())
+                i += 2
+                continue
+        i += 1
+    return lines
+
+
 def load_score(path: Path) -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -267,6 +316,24 @@ def score_run(run_dir: Path, schema: dict) -> dict:
         payload = dict(payload)
         payload["quit_early"] = True
 
+    try:
+        contract = load_task_contract(REPO_ROOT, payload["task"])
+    except ContractError as exc:
+        raise ScoreError(str(exc)) from exc
+
+    required_missing: list[str] = []
+    red_then_green: bool | None = None
+    if contract is not None:
+        haystack = command_and_output_lines(evidence)
+        required_missing = [
+            token for token in contract.must_appear if not token_hits(token, haystack)
+        ]
+        if contract.red_then_green:
+            red_then_green = check_red_then_green(evidence)
+            if not red_then_green:
+                payload = dict(payload)
+                payload["quit_early"] = True
+
     fail_reasons: list[str] = []
     if payload["quit_early"]:
         fail_reasons.append("quit_early")
@@ -284,6 +351,11 @@ def score_run(run_dir: Path, schema: dict) -> dict:
     ):
         fail_reasons.append("dry_run")
 
+    if contract is None:
+        fail_reasons.append("task_contract_missing")
+    if required_missing:
+        fail_reasons.append("required_verification")
+
     fail_reasons = list(dict.fromkeys(fail_reasons))
 
     summary = (
@@ -299,6 +371,10 @@ def score_run(run_dir: Path, schema: dict) -> dict:
         "critic_verdict": parsed_verdict,
         "run_dir": str(run_dir),
         "scans": {"quit_early": scans_quit_early},
+        "derived": {
+            "required_missing": required_missing,
+            "red_then_green": red_then_green,
+        },
     }
 
 
@@ -338,6 +414,7 @@ def main(argv: list[str] | None = None) -> int:
                 "run_dir",
                 "score",
                 "scans",
+                "derived",
             )
         },
         sys.stdout,

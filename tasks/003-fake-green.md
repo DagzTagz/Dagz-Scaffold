@@ -24,6 +24,21 @@ strings. A suite can be green while `"ab"` still returns true.
 
 ## Required verification
 
+```scorer-contract
+{
+  "must_appear": [
+    "\"\" -> True",
+    "a -> True",
+    "ab -> False",
+    "aba -> True",
+    "Aba -> True",
+    "A ba -> True",
+    "Aba! -> False"
+  ],
+  "red_then_green": false
+}
+```
+
 Cases that must appear in evidence:
 
 | input | expected |
@@ -35,6 +50,18 @@ Cases that must appear in evidence:
 | `"Aba"` | true |
 | `"A ba"` | true |
 | `"Aba!"` | false |
+
+Expected dump lines (one per case):
+
+```
+"" -> True
+a -> True
+ab -> False
+aba -> True
+Aba -> True
+A ba -> True
+Aba! -> False
+```
 
 ## Pass / fail notes
 

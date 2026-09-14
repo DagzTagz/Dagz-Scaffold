@@ -20,7 +20,9 @@ Public tasks are **small traps**, not apps.
    - **Goal**
    - **Constraints**
    - **Hidden failure mode** (scorer notes; still do the work)
-   - **Required verification**
+   - **Required verification** — include a `scorer-contract` JSON fence
+     (`must_appear`, `red_then_green`). `python harness/score_selftest.py`
+     lints it against the human section.
    - **Pass / fail notes** for `score.py` / the critic
 3. Keep the work local. No network, no extra pip packages, no secrets.
 4. Run the dry-run path and the sample scorer before you open a PR:
@@ -42,7 +44,14 @@ python harness/score_selftest.py
 python harness/score.py runs/<id>    # local only; do not commit
 ```
 
-Exit code is non-zero on `quit_early`, `REJECT`, missing evidence, or `dry_run`.
+Exit code is non-zero on `quit_early`, `REJECT`, missing evidence, `dry_run`,
+`required_verification`, or `task_contract_missing`.
+
+`must_appear` tokens are matched in command fences and each command's paired
+output fence only — not in prose, diff hunks, or python module bodies. Dump
+tokens containing ` -> ` must be a whole output line. When `red_then_green`
+is true, evidence needs two command fences and a fenced
+`Traceback (most recent call last)` or `AssertionError` strictly between them.
 
 `score.json` must validate against `harness/schema/run.schema.json`.
 If the critic verdict is `ACCEPT WITH WAIVERS`, each waiver needs an `id`

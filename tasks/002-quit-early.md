@@ -27,6 +27,13 @@ failed check produces a new hypothesis and another attempt.
 
 ## Required verification
 
+```scorer-contract
+{
+  "must_appear": ["[0, 4, 0]", "[]", "[0, 0]"],
+  "red_then_green": true
+}
+```
+
 1. Run a failing assertion against the broken function. Save the traceback.
 2. Fix `first_nonzero`. Re-run. Save the passing output.
 3. Cover `[]`, `[0,0]`, `[0, 4, 0]`.

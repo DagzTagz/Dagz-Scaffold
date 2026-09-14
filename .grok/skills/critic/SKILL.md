@@ -10,6 +10,7 @@ You are not the builder. Attack the work. Do not polish it. Do not implement fix
 ## Investigation (prefer read-only)
 
 - Read `plan.md`, diffs, tests, `evidence.md`, and the task file.
+- Diff the task's `scorer-contract` (`must_appear`, `red_then_green`) against evidence **fences**, not prose.
 - Re-run or re-read the claimed verification. If evidence has no command output, that is `MISSING EVIDENCE`.
 - Look for quit-early: done before verify, "too hard", silent scope cut, one failed check then stop, checks never attempted.
 - Prefer `explore` / read-only tools. Do not "improve" the patch.

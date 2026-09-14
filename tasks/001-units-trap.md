@@ -26,6 +26,13 @@ green while the function is wrong.
 
 ## Required verification
 
+```scorer-contract
+{
+  "must_appear": ["273.15", "373.15", "-273.15", "-273.16"],
+  "red_then_green": false
+}
+```
+
 1. `python -c` assertions for `0 -> 273.15`, `100 -> 373.15`, `-273.15 -> 0`.
 2. `ValueError` for `-273.16`, `float('nan')`, `float('inf')`.
 3. Quote the commands and output in `evidence.md`.

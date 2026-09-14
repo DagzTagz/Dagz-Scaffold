@@ -27,6 +27,20 @@ Implementing only the happy path (`lo <= value <= hi`) and omitting
 
 ## Required verification
 
+```scorer-contract
+{
+  "must_appear": [
+    "clip(0.5, 0, 1)",
+    "clip(-1, 0, 1)",
+    "clip(2, 0, 1)",
+    "clip(0, 1, 0)",
+    "float('nan')",
+    "float('inf')"
+  ],
+  "red_then_green": false
+}
+```
+
 Run and quote:
 
 - `clip(0.5, 0, 1) == 0.5`
