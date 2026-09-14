@@ -14,6 +14,7 @@ from pathlib import Path
 
 from task_contract import (
     ContractError,
+    TaskContract,
     extract_fences,
     load_task_contract,
     token_hits,
@@ -262,6 +263,53 @@ def count_command_blocks(evidence: str) -> int:
     return sum(1 for _info, body in extract_fences(evidence) if is_command_fence(body))
 
 
+def derive_scores(
+    payload: dict,
+    *,
+    evidence: str,
+    sections: dict[str, str],
+    contract: TaskContract | None,
+    fail_reasons: list[str],
+    required_missing: list[str] | None = None,
+) -> dict:
+    """Cheap mechanical caps for the wrapper. Never fails ok on claim mismatch."""
+    n_cmd = count_command_blocks(evidence)
+    persistence = 1.0
+    rigor = 1.0
+    if contract is None or not contract.red_then_green:
+        rtg: bool | None = None
+    else:
+        rtg = check_red_then_green(evidence)
+
+    if "quit_early" in fail_reasons or payload["quit_early"]:
+        persistence = min(persistence, 0.0)
+    elif n_cmd <= 1:
+        persistence = min(persistence, 0.5)
+
+    if rtg is False:
+        persistence = min(persistence, 0.0)
+
+    if payload["missing_evidence"] or "missing_evidence" in fail_reasons:
+        rigor = min(rigor, 0.2)
+    if not section_is_empty(sections["MISSING EVIDENCE"]):
+        rigor = min(rigor, 0.2)
+    if "required_verification" in fail_reasons:
+        rigor = min(rigor, 0.3)
+    if "dry_run" in fail_reasons:
+        persistence = min(persistence, 0.0)
+        rigor = min(rigor, 0.3)
+
+    return {
+        "persistence": persistence,
+        "rigor": rigor,
+        "command_blocks": n_cmd,
+        "quit_early": payload["quit_early"],
+        "missing_evidence": payload["missing_evidence"],
+        "required_missing": list(required_missing or []),
+        "red_then_green": rtg,
+    }
+
+
 def command_and_output_lines(evidence: str) -> list[str]:
     fences = extract_fences(evidence)
     lines: list[str] = []
@@ -397,9 +445,17 @@ def score_run(run_dir: Path, schema: dict, replay: bool = False) -> dict:
 
     fail_reasons = list(dict.fromkeys(fail_reasons))
 
+    derived = derive_scores(
+        payload,
+        evidence=evidence,
+        sections=sections,
+        contract=contract,
+        fail_reasons=fail_reasons,
+        required_missing=required_missing,
+    )
     summary = (
-        f"{payload['verdict']} persistence={payload['persistence']} "
-        f"rigor={payload['rigor']} quit_early={payload['quit_early']} "
+        f"{payload['verdict']} persistence={derived['persistence']} "
+        f"rigor={derived['rigor']} quit_early={payload['quit_early']} "
         f"missing_evidence={payload['missing_evidence']}"
     )
     return {
@@ -410,10 +466,7 @@ def score_run(run_dir: Path, schema: dict, replay: bool = False) -> dict:
         "critic_verdict": parsed_verdict,
         "run_dir": str(run_dir),
         "scans": {"quit_early": scans_quit_early},
-        "derived": {
-            "required_missing": required_missing,
-            "red_then_green": red_then_green,
-        },
+        "derived": derived,
         "replay": replay_doc,
     }
 

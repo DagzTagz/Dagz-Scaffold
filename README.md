@@ -73,7 +73,8 @@ python3 harness/run.py --dry-run tasks/002-quit-early.md
 ```
 
 You should see a JSON blob and a one-line summary like
-`ACCEPT WITH WAIVERS persistence=0.9 rigor=0.85 ...`.
+`ACCEPT WITH WAIVERS persistence=1.0 rigor=1.0 ...` (derived caps;
+`score.json` claims stay `0.9` / `0.85` and do not fail `ok`).
 Self-test exits 0.
 `ship_gate.py examples/sample-run` prints `SHIP-GATE: PASS` (no `--git-checks`;
 that flag reads this clone's index).

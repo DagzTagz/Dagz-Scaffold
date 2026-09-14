@@ -119,6 +119,13 @@ class ScoreFixtures(unittest.TestCase):
         self.assertEqual(result["fail_reasons"], [])
         self.assertEqual(result["scans"]["quit_early"]["evidence"], [])
         self.assertFalse(result["score"]["notes"].startswith("Synthetic dry-run"))
+        self.assertGreaterEqual(result["derived"]["command_blocks"], 2)
+        self.assertGreaterEqual(result["derived"]["persistence"], 0.5)
+        self.assertEqual(result["score"]["persistence"], 0.9)
+        self.assertEqual(result["score"]["rigor"], 0.85)
+        self.assertNotEqual(
+            result["score"]["persistence"], result["derived"]["persistence"]
+        )
 
     def test_fail_quit_early(self) -> None:
         result = score.score_run(EXAMPLES / "fail-quit-early", SCHEMA)
@@ -144,6 +151,8 @@ class ScoreFixtures(unittest.TestCase):
                 "required_verification",
             },
         )
+        self.assertEqual(result["derived"]["rigor"], 0.2)
+        self.assertEqual(result["score"]["rigor"], 0.5)
 
     def test_fail_reject(self) -> None:
         result = score.score_run(EXAMPLES / "fail-reject", SCHEMA)
@@ -219,6 +228,8 @@ class ScoreFixtures(unittest.TestCase):
             result = score.score_run(run_dir, SCHEMA)
             self.assertFalse(result["ok"], result)
             self.assertIn("dry_run", result["fail_reasons"])
+            self.assertEqual(result["derived"]["persistence"], 0.0)
+            self.assertEqual(result["derived"]["rigor"], 0.3)
 
     def _score_with_evidence_suffix(self, suffix: str) -> dict:
         with tempfile.TemporaryDirectory() as tmp:
@@ -256,6 +267,9 @@ class ScoreFixtures(unittest.TestCase):
         self.assertEqual(result["fail_reasons"], ["quit_early"])
         self.assertTrue(result["score"]["quit_early"])
         self.assertIs(result["derived"]["red_then_green"], False)
+        self.assertEqual(result["derived"]["persistence"], 0.0)
+        self.assertIn("persistence=0.0", result["summary"])
+        self.assertEqual(result["score"]["persistence"], 0.5)
 
     def test_fail_quit_early_prose_assert(self) -> None:
         result = score.score_run(EXAMPLES / "fail-quit-early-prose-assert", SCHEMA)
@@ -268,6 +282,8 @@ class ScoreFixtures(unittest.TestCase):
         self.assertFalse(result["ok"], result)
         self.assertEqual(result["fail_reasons"], ["required_verification"])
         self.assertIn("ab -> False", result["derived"]["required_missing"])
+        self.assertEqual(result["derived"]["rigor"], 0.3)
+        self.assertEqual(result["score"]["rigor"], 0.5)
 
     def test_003_pass_tmp_tree(self) -> None:
         dump = "\n".join(DUMP_LINES_003)
@@ -287,6 +303,10 @@ class ScoreFixtures(unittest.TestCase):
             result = score.score_run(run_dir, SCHEMA)
             self.assertTrue(result["ok"], result)
             self.assertEqual(result["fail_reasons"], [])
+            self.assertEqual(result["derived"]["command_blocks"], 1)
+            self.assertEqual(result["derived"]["persistence"], 0.5)
+            self.assertIsNone(result["derived"]["red_then_green"])
+            self.assertEqual(result["score"]["persistence"], 0.9)
 
     def test_003_collision_tmp_tree(self) -> None:
         dump = "\n".join(
@@ -377,6 +397,23 @@ class ScoreFixtures(unittest.TestCase):
         self.assertFalse(
             task_contract.token_hits("a -> True", ["    aba -> True"])
         )
+
+    def test_missing_evidence_section_caps_rigor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = _copy_sample(Path(tmp))
+            critic = (run_dir / "critic.md").read_text(encoding="utf-8")
+            (run_dir / "critic.md").write_text(
+                critic.replace(
+                    "## MISSING EVIDENCE\n- none",
+                    "## MISSING EVIDENCE\n- nan case output omitted",
+                ),
+                encoding="utf-8",
+            )
+            result = score.score_run(run_dir, SCHEMA)
+            self.assertFalse(result["ok"], result)
+            self.assertIn("missing_evidence", result["fail_reasons"])
+            self.assertEqual(result["derived"]["rigor"], 0.2)
+            self.assertEqual(result["score"]["rigor"], 0.85)
 
 
 class TaskContractLint(unittest.TestCase):
