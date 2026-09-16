@@ -1,85 +1,111 @@
-# What the inspector actually checks
+# Reading the inspector
 
-When you run `python3 harness/score.py` on a folder, you are not asking Grok another question. You are asking a small local program: **does this packet look complete and honest enough to count as a sitting?**
+You already have a run folder (see [find-a-run.md](find-a-run.md)). You type two commands. This page is what those commands are trying to tell you, in ordinary language.
 
-It does not call the network. It does not call the model. (The optional `--replay` flag is the exception: it can re-run a **narrow** list of commands on your machine. Leave it off unless you trust the evidence.)
+You are not asking Grok another question. You are asking a program on your computer: **did the agent leave enough proof that a stranger could reconstruct the work?**
 
-First clone and persist: [getting-started.md](../getting-started.md). Finding the folder: [find-a-run.md](find-a-run.md).
-
----
-
-## What you will see
-
-The program prints a JSON blob (the detailed grade) and a one-line summary on the side. The **exit code** is the part to watch:
-
-- **0** — the packet passed the mechanical checks (`ok` is true).
-- **1** — the packet failed, or it was malformed (`INVALID`).
-- **2** — you pointed it at something that is not a directory.
-
-`ok` is about **process**, not about whether Celsius conversion is scientifically interesting. The numbers labeled persistence and rigor in the summary are **derived** from the packet (how many command blocks, whether a red test was followed by a green one, whether evidence is missing). The same fields inside `score.json` are the agent’s **self-report**. If the file says “I did not quit” but the evidence says “this should work,” the inspector believes the evidence.
-
-`ship_gate.py` is the same idea with a friendlier PASS/BLOCK line. On a live folder you usually add `--git-checks` so it also looks at whether you accidentally staged secrets or a live `runs/` directory. Do not add `--git-checks` when you are only grading `examples/sample-run`.
-
-If ship-gate says **BLOCK**, or `score.py` exits 1, the sitting is not done. If it says **PASS**, a skeptic could reconstruct the sitting from the folder. You still read the code.
+First-time setup: [getting-started.md](../getting-started.md).
 
 ---
 
-## Why a packet fails
+## The only two outcomes you need
 
-These names show up in `fail_reasons`. They are meant to be readable, not mysterious.
+After:
 
-**quit_early.** The evidence talks like the agent bailed (“should work,” “too hard,” “gave up”), or the task required a failing test then a retry and only the green run is there, or there are no commands at all. The **plan** and **critic** are allowed to mention “too hard” as a thing to avoid. Evidence is not, except when it is quoting the task inside a markdown fence.
+```bash
+python3 harness/score.py runs/YOUR-FOLDER
+python3 harness/ship_gate.py runs/YOUR-FOLDER --git-checks
+```
 
-**REJECT.** The critic voted reject, and no **human** filled in an override. An override needs both `by` and `reason` in `score.json`. Grok is not allowed to invent that.
+**PASS** (both commands succeed, ship-gate prints `SHIP-GATE: PASS`) means the folder looks complete: a plan, evidence with real commands, a critic vote, a score file, and no “I quit” language in the evidence. You may treat the sitting as finished enough to consider merging. You should still open the diff. This tool does not replace reading the code.
 
-**missing_evidence** / **evidence_has_no_commands.** The critic listed missing evidence, or the evidence file has no command-looking content (no `python` lines, no fenced blocks). A story without output is not a sitting.
+**Not passed** (ship-gate prints `SHIP-GATE: BLOCK`, or the first command stops with an error) means do not merge. The chat may have sounded done. The folder is not. Scroll up: there will be a short reason. Give that reason back to Grok.
 
-**dry_run.** This folder was written by `run.py --dry-run`. Failing is the correct answer.
+If the first command says the path is not a directory, you pointed it at a file or a typo. Use the folder name from `ls runs/`, not `score.json` by itself.
 
-**required_verification.** The task asked for specific strings (for example `273.15`, or a whole line `ab -> False`) to appear in the **command and output fences**. They were not there. Prose in the margin does not count, and a source dump in a `python` fence does not count either.
-
-**task_contract_missing.** The task file never declared those required strings in a `scorer-contract` JSON fence. Public traps in this repo should not hit that.
-
----
-
-## Task contracts, in plain language
-
-Each public task includes a small JSON block under “Required verification.” It lists strings that must show up in evidence, and whether the sitting must include a fenced failure then a later command (`red_then_green`).
-
-The inspector looks only in **command fences** and the **plain output fence that follows a command**. That stops an agent from hiding the required text in a comment or a diff.
-
-If a required token looks like `a -> True`, it has to be a **whole line** of output. `aba -> True` does not count as `a -> True`.
-
-How to write a new trap: [tasks.md](tasks.md).
+You can skip `--git-checks` when you are only practicing on `examples/sample-run`. Use `--git-checks` on a live folder so it also looks for secrets or a `runs/` directory accidentally staged for commit.
 
 ---
 
-## Derived numbers
+## What the two programs are
 
-The summary line’s persistence and rigor are caps computed from the packet, not a personality score for Grok.
+`score.py` is the picky reader. It opens the four files in the folder and checks they agree with each other and with the task.
 
-If the agent quit early, persistence is zero. One command block without a required retry is at most half. A dry-run mock is marked as such. Missing evidence pulls rigor down. Those numbers **do not by themselves** flip `ok`. The fail reasons above do.
+`ship_gate.py` is the same check with a yes/no line you can read from across the room. On a live folder it can also look at git (the `--git-checks` part).
 
-The JSON wrapper also reports `attempts` (how many command fences) and `recovered_after_failure` (whether a fenced traceback sits between commands).
+Neither one calls Grok. Neither one calls the internet. They only read what is already on disk (unless you later turn on `--replay`, which is optional and described at the bottom).
 
 ---
 
-## Replay, if you turn it on
+## What “the folder looks complete” actually means
+
+Imagine a take-home exam. The inspector does not re-grade the math from scratch. It checks that the exam was filled in:
+
+- There is a plan.
+- There is evidence that includes **commands** (the kind of thing you could paste into a terminal) and, usually, what those commands printed.
+- There is a critic file with a clear vote: accept, accept with named exceptions, or reject.
+- The score file’s vote matches the critic. You cannot have the critic say reject and the score file say accept.
+- If the critic listed blockers, the vote has to be reject (unless a **human** wrote an override — Grok is not allowed to write that).
+- If the task said “you must show `273.15`” or “you must show a failing test then a passing one,” that proof has to appear in the evidence **as command output**, not as a sentence in the margin.
+
+If the agent wrote “this should work” or “this was too hard” in the evidence, the inspector treats that as quitting, even if the score file claims otherwise. The plan is allowed to say “do not quit because it is too hard.” That is a warning to the agent, not a confession.
+
+---
+
+## If it failed, what the short reason usually means
+
+The summary may print a machine name. Here is the human version.
+
+**It looks like they quit (`quit_early`).** The evidence sounds like they stopped (“should work,” “too hard,” “gave up”), or the task required a first failing test and a later fix and only the success is there, or there are no commands at all.
+
+**The critic said no (`REJECT`).** A second pass found a blocker. You can only force a pass with a human override that names who overrode and why. Do not let the model fill that in.
+
+**There is no proof (`missing_evidence` or `evidence_has_no_commands`).** The evidence file is a story, or the critic said required checks were never run. A sitting without output is not a sitting.
+
+**This was a fake persist (`dry_run`).** You scored a folder from `run.py --dry-run`. It is supposed to fail. Run a real persist if you meant to test the AI.
+
+**A required example is missing (`required_verification`).** The task asked for specific output (a temperature, a line like `ab -> False`). It did not show up where commands and their printed results live. Hiding it in a comment does not count.
+
+If the folder is missing files or the critic headings are wrong, the inspector will say the packet is malformed instead of grading it. That is also a fail. Send Grok back to write the four files properly.
+
+---
+
+## The numbers on the summary line
+
+You will see words like persistence and rigor with values between 0 and 1. Those are **not** a score for how smart Grok is. They are a rough read of the folder: did they retry after a failure, did they show more than one command, is evidence thin.
+
+They do **not** decide PASS vs BLOCK by themselves. The reasons in the previous section do. If the file claims persistence `1.0` and the evidence shows a quit, you still fail.
+
+You can ignore the JSON blob if the one-line summary and PASS/BLOCK are enough. The JSON is there if you want the details.
+
+---
+
+## You can stop here
+
+For everyday use — persist, find the folder, run the two commands, merge or don’t — that is the whole inspector.
+
+The rest of this page is only if you turn on extra options or you write new tasks.
+
+---
+
+## Optional: re-running the commands (`--replay`)
 
 ```bash
 python3 harness/score.py --replay runs/YOUR-FOLDER
 ```
 
-Default is off. Fixtures under `examples/` are never executed this way.
+This is **off** unless you ask for it. It tries to run some of the commands in the evidence again on your machine, to see if the transcript was fake.
 
-When it is on, only a tight `python -c` shape (imports from `harness_tmp`) and a short list of **read-only-ish git** subcommands are allowed. Things like `os.system`, `python -m`, extra files, `git push`, and `git --git-dir=` are refused **and not started**. A traceback that is clearly the historical red run is skipped so we do not re-run a broken function against the already-fixed file.
+Leave it off if you do not trust the folder, and leave it off for `examples/sample-run`. Only a small kind of `python -c` and a few `git` lookups are allowed. Dangerous-looking commands are refused and are not started.
 
-If replay disagrees with the transcript, that is missing evidence, not a waiver.
+If replay disagrees with what the evidence claimed, that counts as missing proof.
 
-`ship_gate.py` will replay live folders (not `examples/`). It has no `--replay` flag of its own.
+Ship-gate, on a **live** folder, may replay on its own. Practice folders under `examples/` are never executed this way.
 
 ---
 
-## Practice packets in git
+## If you write tasks
 
-`examples/sample-run/` should pass. Several `examples/fail-*` and `examples/quit-early-run`, `reject-run`, `fake-green-run` should fail, each for a named reason. Those folders are synthetic. Live work belongs in `runs/`, which git ignores. Do not copy live packets into a pull request.
+Public traps include a small JSON list of strings the evidence must show, plus whether a failing test then a retry is required. Matching is picky on purpose: the string has to appear in the command/output area, and lines like `a -> True` must be a whole line so `aba -> True` cannot fake them.
+
+How to add a trap: [tasks.md](tasks.md).
