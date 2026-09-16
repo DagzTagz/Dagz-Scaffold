@@ -33,13 +33,7 @@ You must be in the clone, the same place you ran `grok` or `harness/run.py`.
 cd /path/to/Dagz-Scaffold
 ```
 
-On this project’s usual Linux VM that is:
-
-```bash
-cd /path/to/Dagz-Scaffold
-```
-
-If you cloned somewhere else, `cd` there instead. `ls harness/score.py` should succeed.
+Use **your** clone path (`ls harness/score.py` should succeed). Do not copy someone else’s `$HOME`.
 
 ## Step 2 — List live run folders
 

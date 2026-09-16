@@ -73,9 +73,8 @@ Date: 2026-09-13
 Repo / remote / branch:
 
 - New local git repo at `/path/to/Dagz-Scaffold` on `main`.
-- Workspace cwd was `$HOME` (home directory, **not** a git repo, lots
-  of unrelated personal files). Harness is therefore a dedicated project
-  root, not dumped onto `$HOME`.
+- Workspace cwd was `$HOME` (not a git repo). Harness is a dedicated
+  project root, not dumped onto `$HOME`.
 - No `origin`. Public GitHub listing for `DagzTagz` shows only
   `dagztagz-hypothesis-engine`. Names `Dagz-Scaffold` / `dagz-scaffold`
   returned 404. Global git credential helper points at a **stale** nix
