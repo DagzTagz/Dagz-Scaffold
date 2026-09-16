@@ -48,6 +48,7 @@ Scoring a `--dry-run` folder exits **1** (`dry_run`). That is expected.
 
 ## Unreleased
 
+- Rewrite GitHub-facing docs in full sentences (README, getting-started, find-a-run, scorer, tasks, CONTRIBUTING) so a person can follow them without treating them as a machine checklist
 - Redact local `$HOME` username from docs and sample-run evidence
 - [docs/find-a-run.md](docs/find-a-run.md) — step-by-step: list `runs/`, copy the folder name, point score/ship-gate at it
 - Live `run.py` scores after `grok -p` and retries once (cap 2); records `attempts`

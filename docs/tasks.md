@@ -1,21 +1,18 @@
-# Public trap tasks
+# Writing a public trap
 
-Public tasks are **small traps**, not apps. They exist so you can see whether an agent still does a known failure (wrong units, quit after red, fake green, silent scope cut, narrative instead of output).
+The files under `tasks/` are not product features. They are **short exams** with a known way to cheat. We use them so you can see whether an agent still does a familiar failure: wrong units, quitting after the first red test, a test suite that is green while a required case was never run, quietly dropping an edge case, or saying “it passed” with no output.
 
-Issue template: `.github/ISSUE_TEMPLATE/task.yml`.
+If you want a new trap in the repo, this page is the how-to. There is also a GitHub issue form at `.github/ISSUE_TEMPLATE/task.yml`.
 
-## Add a task
+---
 
-1. Copy `tasks/001-units-trap.md` to `tasks/00N-short-name.md`.
-2. Fill every human section:
+## What a good trap looks like
 
-   - **Goal**
-   - **Constraints**
-   - **Hidden failure mode** (what a quitting or cheating agent will do)
-   - **Required verification**
-   - **Pass / fail notes**
+Write the goal in ordinary language. State the constraints (stdlib only, no network, and the real rules of the function). Then write the **hidden failure mode**: what a tired or overconfident agent will do instead of finishing. Then list the verification a skeptic must see in evidence.
 
-3. Immediately under `## Required verification`, put a fenced JSON contract. Info-string must be exactly `scorer-contract`. Example shape:
+Immediately under the “Required verification” heading, put a JSON block whose fence language is exactly `scorer-contract`. That is how the inspector knows which strings must appear in command/output fences, and whether a fenced failure-then-retry is required.
+
+Example shape:
 
 ````markdown
 ## Required verification
@@ -30,28 +27,38 @@ Issue template: `.github/ISSUE_TEMPLATE/task.yml`.
 1. `python -c` assertions for …
 ````
 
-4. Keep the work **local**. No network, no extra pip packages, no secrets.
-5. `python harness/score_selftest.py` lints the contract against the human section (tokens must appear there; dump tokens as whole lines).
-6. Dry-run the wrapper if you want a mock folder (that folder will score as `dry_run`):
+`must_appear` is the list of strings evidence has to show in the **right fences**, not in a bloggy paragraph. `red_then_green` is true when the sitting is worthless unless we see a fenced traceback (or `AssertionError`) **between** two command fences.
+
+If you use dump-style tokens such as `ab -> False`, they match a **whole output line**. That way `aba -> True` cannot fake `a -> True`.
+
+Do not paste the “hidden failure mode” paragraph into `evidence.md` as if it were a confession. Quoting the task inside a markdown fence is fine; the inspector strips that before looking for quit-early phrases.
+
+---
+
+## How to add one
+
+Copy `tasks/001-units-trap.md` to something like `tasks/006-short-name.md`. Fill every human section: goal, constraints, hidden failure mode, required verification (including the JSON fence), pass/fail notes.
+
+Keep the work local. No extra pip packages, no secrets, no “just hit this API.”
+
+Then run:
 
 ```bash
-python3 harness/run.py --dry-run tasks/00N-short-name.md
 python3 harness/score_selftest.py
 ```
 
-## Contract rules (short)
+That lints the contract against the human-readable part of the task (the strings you listed have to appear in the write-up too, so the JSON cannot drift from the prose).
 
-| Field | Meaning |
-|-------|---------|
-| `must_appear` | Strings that must show up in evidence **command** fences or paired **unlabeled** output fences |
-| `red_then_green` | `true` if the task requires a fenced failing traceback, then a green command |
+You can dry-run the wrapper if you want a mock folder. Scoring that mock will fail with `dry_run`, which is expected:
 
-Dump-style tokens (`ab -> False`) are whole-line matches so `aba -> True` does not satisfy `a -> True`.
+```bash
+python3 harness/run.py --dry-run tasks/006-short-name.md
+```
 
-Do not paste the Hidden failure mode paragraph into `evidence.md` as prose. Quoting the task inside a `markdown` info-string fence is OK.
+More on how matching works: [scorer.md](scorer.md).
 
-Details: [scorer.md](scorer.md).
+---
 
-## Do not submit live runs
+## What not to send in a pull request
 
-`runs/` is gitignored. The checked-in fixtures under `examples/` are synthetic. A PR that adds a task should not attach a live persist folder.
+Live `runs/` folders are gitignored on purpose. The `examples/` packets are synthetic. A PR that adds a task should not attach a real persist from your machine.

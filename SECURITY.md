@@ -1,8 +1,8 @@
 # Security Policy
 
-Thank you for helping keep **Dagz-Scaffold** and its users safe.
+If you found something that could hurt people who clone this repo — a leaked key, a way to run unexpected commands, a path that uploads their work — please tell us **privately**. This page is the how-to. Ordinary bugs and “the docs confused me” belong in a normal GitHub issue.
 
-This is a **DagzTagz** community project. Live runs are **powered by Grok (xAI)** when you use the `grok` CLI, and this is **not** an official product of xAI.
+Thank you for helping keep Dagz-Scaffold and its users safe. This is a DagzTagz community project. Live runs are powered by Grok (xAI) when you use the `grok` CLI. This is **not** an official product of xAI.
 
 ---
 

@@ -1,107 +1,85 @@
-# Scorer and ship-gate
+# What the inspector actually checks
 
-`python harness/score.py RUN_DIR` grades a persist folder. It does **not** call the network or the model (unless you pass `--replay`, which is local subprocess only).
+When you run `python3 harness/score.py` on a folder, you are not asking Grok another question. You are asking a small local program: **does this packet look complete and honest enough to count as a sitting?**
 
-Walkthrough of a first clone: [getting-started.md](../getting-started.md).
+It does not call the network. It does not call the model. (The optional `--replay` flag is the exception: it can re-run a **narrow** list of commands on your machine. Leave it off unless you trust the evidence.)
 
-## Exit codes
+First clone and persist: [getting-started.md](../getting-started.md). Finding the folder: [find-a-run.md](find-a-run.md).
 
-| Code | Meaning |
-|------|---------|
-| 0 | `ok: true` — mechanical checks passed |
-| 1 | `ok: false` or `INVALID` (shape broken) |
-| 2 | path is not a directory |
+---
 
-Stdout is JSON. Stderr is a one-line summary.
+## What you will see
 
-## What `ok` is
+The program prints a JSON blob (the detailed grade) and a one-line summary on the side. The **exit code** is the part to watch:
 
-`ok` is **mechanical**. Persistence and rigor numbers in the summary are **derived caps**. Values inside `score.json` are the builder’s **claims** and do not flip `ok` by themselves.
+- **0** — the packet passed the mechanical checks (`ok` is true).
+- **1** — the packet failed, or it was malformed (`INVALID`).
+- **2** — you pointed it at something that is not a directory.
 
-Typical `fail_reasons`:
+`ok` is about **process**, not about whether Celsius conversion is scientifically interesting. The numbers labeled persistence and rigor in the summary are **derived** from the packet (how many command blocks, whether a red test was followed by a green one, whether evidence is missing). The same fields inside `score.json` are the agent’s **self-report**. If the file says “I did not quit” but the evidence says “this should work,” the inspector believes the evidence.
 
-| Reason | Meaning |
-|--------|---------|
-| `quit_early` | Evidence has a forbidden phrase, JSON `quit_early: true`, or `red_then_green` failed |
-| `REJECT` | Critic verdict is reject |
-| `missing_evidence` | No commands, critic missing-evidence section, or replay mismatch |
-| `evidence_has_no_commands` | No `$ ` / `python` / fences |
-| `dry_run` | Mock from `run.py --dry-run` |
-| `required_verification` | Task `must_appear` tokens missing from command/output fences |
-| `task_contract_missing` | Task file has no `scorer-contract` fence |
+`ship_gate.py` is the same idea with a friendlier PASS/BLOCK line. On a live folder you usually add `--git-checks` so it also looks at whether you accidentally staged secrets or a live `runs/` directory. Do not add `--git-checks` when you are only grading `examples/sample-run`.
 
-Plan and critic **may** mention “too hard” as a checklist. **Evidence** may not, except inside a ` ```markdown ` task excerpt.
+If ship-gate says **BLOCK**, or `score.py` exits 1, the sitting is not done. If it says **PASS**, a skeptic could reconstruct the sitting from the folder. You still read the code.
 
-## Task contracts
+---
 
-Each public task has a fenced JSON block under `## Required verification` with info-string `scorer-contract`:
+## Why a packet fails
 
-```json
-{
-  "must_appear": ["273.15", "373.15"],
-  "red_then_green": false
-}
-```
+These names show up in `fail_reasons`. They are meant to be readable, not mysterious.
 
-- `must_appear` is searched in **command fences** and each command’s **paired unlabeled output** fence only — not prose, not ` ```diff `, not ` ```python ` module bodies.
-- Dump tokens containing ` -> ` match as a **whole output line** (`a -> True` is not satisfied by `aba -> True`).
-- `red_then_green: true` requires two command fences and a fenced traceback / `AssertionError` **between** them. Unfenced prose does not count.
+**quit_early.** The evidence talks like the agent bailed (“should work,” “too hard,” “gave up”), or the task required a failing test then a retry and only the green run is there, or there are no commands at all. The **plan** and **critic** are allowed to mention “too hard” as a thing to avoid. Evidence is not, except when it is quoting the task inside a markdown fence.
 
-Authoring: [tasks.md](tasks.md).
+**REJECT.** The critic voted reject, and no **human** filled in an override. An override needs both `by` and `reason` in `score.json`. Grok is not allowed to invent that.
 
-## Derived scores
+**missing_evidence** / **evidence_has_no_commands.** The critic listed missing evidence, or the evidence file has no command-looking content (no `python` lines, no fenced blocks). A story without output is not a sitting.
 
-The summary line uses derived `persistence` / `rigor` (0–1). Examples:
+**dry_run.** This folder was written by `run.py --dry-run`. Failing is the correct answer.
 
-- `quit_early` → persistence 0.0
-- one command fence → persistence ≤ 0.5
-- missing evidence → rigor ≤ 0.2
-- `dry_run` → 0.0 / 0.3
+**required_verification.** The task asked for specific strings (for example `273.15`, or a whole line `ab -> False`) to appear in the **command and output fences**. They were not there. Prose in the margin does not count, and a source dump in a `python` fence does not count either.
 
-Mismatch between claims and derived does **not** fail `ok`.
+**task_contract_missing.** The task file never declared those required strings in a `scorer-contract` JSON fence. Public traps in this repo should not hit that.
 
-Wrapper `derived` also includes `attempts` (command-fence count) and
-`recovered_after_failure` (fenced red then a later command).
+---
 
-A `REJECT` run is still `ok: false` unless a **human** `override` object is
-present with both `by` and `reason`. The critic/builder must not invent it.
+## Task contracts, in plain language
 
-## Replay (`--replay`)
+Each public task includes a small JSON block under “Required verification.” It lists strings that must show up in evidence, and whether the sitting must include a fenced failure then a later command (`red_then_green`).
 
-Default **off**.
+The inspector looks only in **command fences** and the **plain output fence that follows a command**. That stops an agent from hiding the required text in a comment or a diff.
+
+If a required token looks like `a -> True`, it has to be a **whole line** of output. `aba -> True` does not count as `a -> True`.
+
+How to write a new trap: [tasks.md](tasks.md).
+
+---
+
+## Derived numbers
+
+The summary line’s persistence and rigor are caps computed from the packet, not a personality score for Grok.
+
+If the agent quit early, persistence is zero. One command block without a required retry is at most half. A dry-run mock is marked as such. Missing evidence pulls rigor down. Those numbers **do not by themselves** flip `ok`. The fail reasons above do.
+
+The JSON wrapper also reports `attempts` (how many command fences) and `recovered_after_failure` (whether a fenced traceback sits between commands).
+
+---
+
+## Replay, if you turn it on
 
 ```bash
-python3 harness/score.py --replay runs/<id>
+python3 harness/score.py --replay runs/YOUR-FOLDER
 ```
 
-- `examples/` is never auto-executed (`replay.skipped: examples fixture`).
-- Only AST-allowlisted `python -c` (imports under `harness_tmp`) and a small **git** subcommand list.
-- `os.system`, `python -m`, extra files, `git push`, `git --git-dir=` are **denied and not spawned**.
-- Historical red (output fence looks like a traceback) is skipped, not re-run against the current tree.
-- Mismatch → `missing_evidence`, not a waiver.
+Default is off. Fixtures under `examples/` are never executed this way.
 
-`ship_gate.py` auto-replays paths **not** under `examples/`. There is no `--replay` flag on ship-gate.
+When it is on, only a tight `python -c` shape (imports from `harness_tmp`) and a short list of **read-only-ish git** subcommands are allowed. Things like `os.system`, `python -m`, extra files, `git push`, and `git --git-dir=` are refused **and not started**. A traceback that is clearly the historical red run is skipped so we do not re-run a broken function against the already-fixed file.
 
-## Ship-gate
+If replay disagrees with the transcript, that is missing evidence, not a waiver.
 
-```bash
-python3 harness/ship_gate.py examples/sample-run          # hermetic smoke
-python3 harness/ship_gate.py runs/<id> --git-checks       # live persist
-```
+`ship_gate.py` will replay live folders (not `examples/`). It has no `--replay` flag of its own.
 
-`--git-checks` (default **off**) scans **this clone’s** index for staged `runs/*` (except `.gitkeep`) and secret name/blob patterns. Non-zero git → `git_error`.
+---
 
-`SHIP-GATE: BLOCK` or exit 1 → the run is not done. Do not skip this program.
+## Practice packets in git
 
-## Fixtures
-
-| Folder | After a current scorer |
-|--------|------------------------|
-| `examples/sample-run/` | `ok: true` |
-| `examples/fail-quit-early/` | `quit_early` |
-| `examples/fail-missing-evidence/` | missing evidence + no commands (+ contract miss) |
-| `examples/fail-reject/` | `REJECT` |
-| `examples/fail-quit-early-green-only/` | `quit_early` (no red fence) |
-| `examples/fail-fake-commands/` | `required_verification` |
-
-Live `runs/` are gitignored. Do not copy them into git.
+`examples/sample-run/` should pass. Several `examples/fail-*` and `examples/quit-early-run`, `reject-run`, `fake-green-run` should fail, each for a named reason. Those folders are synthetic. Live work belongs in `runs/`, which git ignores. Do not copy live packets into a pull request.

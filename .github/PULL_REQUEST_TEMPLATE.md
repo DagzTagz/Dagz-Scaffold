@@ -1,6 +1,6 @@
 ## What
 
-<!-- One or two sentences. What changed, and why. -->
+<!-- In a couple of sentences: what did you change, and why would a person care? -->
 
 ## How to test
 
