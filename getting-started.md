@@ -82,7 +82,7 @@ python3 harness/score.py runs/<id>
 python3 harness/ship_gate.py runs/<id> --git-checks
 ```
 
-Replace `<id>` with the folder you actually got (UTC timestamp + task slug).
+`<id>` is a **folder name**, not a file. How to find it on your machine: **[docs/find-a-run.md](docs/find-a-run.md)**. Example on one Linux clone: `runs/20260913T220306Z-002-quit-early`.
 
 `SHIP-GATE: BLOCK` or scorer exit 1 → not done. Do not skip `ship_gate.py`.
 
@@ -121,6 +121,7 @@ git check-ignore -v .env runs/foo.json
 
 | Doc | When |
 |-----|------|
+| [docs/find-a-run.md](docs/find-a-run.md) | Locate `runs/<id>/` and point score/ship-gate at it |
 | [docs/scorer.md](docs/scorer.md) | What `ok` / `fail_reasons` / derived scores mean |
 | [docs/tasks.md](docs/tasks.md) | Adding a public trap |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | PRs, AI-assisted work |

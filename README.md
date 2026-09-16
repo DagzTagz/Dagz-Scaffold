@@ -46,6 +46,7 @@ task file  →  plan.md  →  builder diffs  →  critic.md  →  evidence.md  �
 `score.py` is a cheap lie detector, not a scientist. It checks process (files, verdicts, required tokens, replay). Correctness still sits with you and the critic.
 
 Full walkthrough: **[getting-started.md](getting-started.md)**.  
+Find a live folder: **[docs/find-a-run.md](docs/find-a-run.md)**.  
 Scorer details: **[docs/scorer.md](docs/scorer.md)**.  
 Adding a trap: **[docs/tasks.md](docs/tasks.md)**.
 
