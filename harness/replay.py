@@ -12,7 +12,9 @@ import ast
 import os
 import re
 import shlex
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import NamedTuple
 
@@ -171,7 +173,26 @@ BANNED_NAMES = frozenset(
     }
 )
 
-KEEP_ENV = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TERM")
+KEEP_ENV = ("HOME", "LANG", "LC_ALL", "LC_CTYPE", "TERM")
+# Fixed stub. The evidence payload is passed in the environment, never interpolated.
+REPLAY_STUB = (
+    "import os, sys\n"
+    "root = os.environ.get('DAGZ_REPLAY_ROOT', '')\n"
+    "if root:\n"
+    "    sys.path.insert(0, root)\n"
+    "src = os.environ['DAGZ_REPLAY_C']\n"
+    "exec(compile(src, '<replay>', 'exec'), {'__name__': '__main__'})\n"
+)
+# Command-line config overrides repo .git/config and the user's global file.
+GIT_CONFIG_OVERRIDES = (
+    "core.fsmonitor=",
+    "core.hooksPath=/dev/null",
+    "diff.external=",
+    "core.pager=cat",
+    "core.sshCommand=false",
+    "maintenance.auto=false",
+)
+GIT_NO_EXTERNAL = ("diff", "show", "log")
 PROXY_ENV = (
     "HTTP_PROXY",
     "HTTPS_PROXY",
@@ -221,6 +242,34 @@ def _check_call(n: ast.Call, imported: set[str]) -> None:
         raise ReplayDenied(f"call:{name}")
 
 
+def _int_const(node: ast.AST) -> int | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool):
+        return node.value
+    return None
+
+
+def _check_size(node: ast.BinOp) -> None:
+    """Reject constant allocations the 15s timeout would not stop."""
+    if isinstance(node.op, ast.Pow):
+        base, exp = _int_const(node.left), _int_const(node.right)
+        if exp is not None and (exp < 0 or exp > 6):
+            raise ReplayDenied("size")
+        if base is not None and exp is not None and abs(base) ** exp > 1_000_000:
+            raise ReplayDenied("size")
+        return
+    left, right = _int_const(node.left), _int_const(node.right)
+    if isinstance(node.left, ast.Constant) and isinstance(node.left.value, str):
+        if right is not None and right > 10_000:
+            raise ReplayDenied("size")
+    if isinstance(node.right, ast.Constant) and isinstance(node.right.value, str):
+        if left is not None and left > 10_000:
+            raise ReplayDenied("size")
+    if (left is not None and abs(left) > 100_000) or (
+        right is not None and abs(right) > 100_000
+    ):
+        raise ReplayDenied("size")
+
+
 def replay_allowed_c(src: str) -> None:
     """Raise ReplayDenied if a python -c payload is not allowlisted."""
     try:
@@ -244,6 +293,8 @@ def replay_allowed_c(src: str) -> None:
             _check_call(n, imported)
         if isinstance(n, ast.Name) and n.id in BANNED_NAMES:
             raise ReplayDenied(f"banned_name:{n.id}")
+        if isinstance(n, ast.BinOp) and isinstance(n.op, (ast.Pow, ast.Mult)):
+            _check_size(n)
 
 
 def command_text_from_fence(body: str) -> str:
@@ -439,17 +490,97 @@ def is_under_examples(run_dir: Path, repo_root: Path | None = None) -> bool:
     return True
 
 
+def _path_dirs(repo_root: Path) -> str:
+    """PATH with the repo, '.', and the user bin directories removed."""
+    home = Path.home().resolve()
+    skip = {home / "bin", home / ".local" / "bin"}
+    root = repo_root.resolve()
+    kept: list[str] = []
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if not entry or entry == ".":
+            continue
+        try:
+            resolved = Path(entry).resolve()
+        except OSError:
+            continue
+        if resolved in skip:
+            continue
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            kept.append(str(resolved))
+    return os.pathsep.join(kept)
+
+
+def trusted_python() -> Path:
+    """The interpreter already running the harness, not the path in the evidence."""
+    path = Path(sys.executable).resolve()
+    if not path.is_file() or not os.access(path, os.X_OK):
+        raise ReplayDenied("python_binary")
+    return path
+
+
+def trusted_git(repo_root: Path) -> Path:
+    found = shutil.which("git", path=_path_dirs(repo_root))
+    if not found:
+        raise ReplayDenied("git_binary")
+    path = Path(found).resolve()
+    if not path.is_file() or not os.access(path, os.X_OK):
+        raise ReplayDenied("git_binary")
+    try:
+        path.relative_to(repo_root.resolve())
+    except ValueError:
+        return path
+    raise ReplayDenied("git_inside_repo")
+
+
 def replay_env(repo_root: Path) -> dict[str, str]:
     env = {key: os.environ[key] for key in KEEP_ENV if key in os.environ}
-    env["PYTHONPATH"] = str(repo_root)
     env["NO_PROXY"] = "*"
     env["PYTHONNOUSERSITE"] = "1"
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    env["GIT_PAGER"] = "cat"
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    env["PATH"] = _path_dirs(repo_root)
     for key in PROXY_ENV:
         env.pop(key, None)
     return env
 
 
-def _run(argv: list[str], repo_root: Path) -> subprocess.CompletedProcess[str]:
+def _c_payload(argv: list[str]) -> str:
+    args = argv[1:]
+    for i, tok in enumerate(args):
+        if tok == "-c" and i + 1 < len(args):
+            return args[i + 1]
+    raise ReplayDenied("missing_-c")
+
+
+def python_spawn(argv: list[str], repo_root: Path) -> tuple[list[str], dict[str, str]]:
+    env = replay_env(repo_root)
+    env["DAGZ_REPLAY_ROOT"] = str(repo_root.resolve())
+    env["DAGZ_REPLAY_C"] = _c_payload(argv)
+    spawn = [str(trusted_python()), "-I", "-S", "-c", REPLAY_STUB]
+    return spawn, env
+
+
+def git_spawn(argv: list[str], repo_root: Path) -> tuple[list[str], dict[str, str]]:
+    tokens = argv[1:]
+    if not tokens:
+        raise ReplayDenied("git_no_subcommand")
+    sub, rest = tokens[0], tokens[1:]
+    config: list[str] = []
+    for item in GIT_CONFIG_OVERRIDES:
+        config.extend(["-c", item])
+    extra = ["--no-ext-diff", "--no-textconv"] if sub in GIT_NO_EXTERNAL else []
+    spawn = [str(trusted_git(repo_root)), *config, sub, *extra, *rest]
+    return spawn, replay_env(repo_root)
+
+
+def _run(
+    argv: list[str], repo_root: Path, env: dict[str, str]
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         argv,
         cwd=str(repo_root),
@@ -459,7 +590,7 @@ def _run(argv: list[str], repo_root: Path) -> subprocess.CompletedProcess[str]:
         text=True,
         encoding="utf-8",
         errors="replace",
-        env=replay_env(repo_root),
+        env=env,
     )
 
 
@@ -528,13 +659,29 @@ def replay_evidence(evidence: str, *, repo_root: Path | None = None) -> dict:
             continue
         expected = 0 if pair.claimed_exit is None else pair.claimed_exit
         try:
-            completed = _run(argv, repo_root)
+            if kind == "python-c":
+                spawn, env = python_spawn(argv, repo_root)
+            else:
+                spawn, env = git_spawn(argv, repo_root)
+        except ReplayDenied as exc:
+            unreplayable = True
+            pairs_out.append(
+                _record(
+                    pair,
+                    argv=argv,
+                    action="denied",
+                    reason=str(exc) or "unreplayable_command",
+                )
+            )
+            continue
+        try:
+            completed = _run(spawn, repo_root, env)
         except subprocess.TimeoutExpired:
             mismatch = True
             pairs_out.append(
                 _record(
                     pair,
-                    argv=argv,
+                    argv=spawn,
                     action="mismatch",
                     reason="timeout",
                     expected_exit=expected,
@@ -553,7 +700,7 @@ def replay_evidence(evidence: str, *, repo_root: Path | None = None) -> dict:
             pairs_out.append(
                 _record(
                     pair,
-                    argv=argv,
+                    argv=spawn,
                     action="mismatch",
                     reason=reason,
                     exit_code=completed.returncode,
@@ -565,7 +712,7 @@ def replay_evidence(evidence: str, *, repo_root: Path | None = None) -> dict:
         pairs_out.append(
             _record(
                 pair,
-                argv=argv,
+                argv=spawn,
                 action="executed",
                 exit_code=completed.returncode,
                 expected_exit=expected,

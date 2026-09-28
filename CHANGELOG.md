@@ -48,6 +48,17 @@ Scoring a `--dry-run` folder exits **1** (`dry_run`). That is expected.
 
 ## Unreleased
 
+### Security
+
+- `score.py --replay` starts Python with `-I -S` from the interpreter that launched the scorer, and does not put the repo on `PYTHONPATH` before startup. A `sitecustomize.py` in the checkout is not imported for an allowlisted `python -c`.
+- Replay pins `git` to a binary outside the repo and overrides hook, fsmonitor, pager, and external-diff config for that command. `git diff` / `show` / `log` also pass `--no-ext-diff` and `--no-textconv`.
+- `score.json` `override` no longer passes a `REJECT` by itself. A person has to pass `--honor-override`.
+- Ship-gate reads the run folder for secret-shaped text and symlink artifacts. It still does not re-run evidence. The scorer doc used to say it might.
+- `run.py --run-id` must be one plain name under `--out-dir`. Writes do not follow an existing symlink.
+- The task file scored for a git checkout must match `HEAD`. A symlink under `tasks/` is rejected.
+- Evidence that only prints the required strings, without calling the imported `harness_tmp` function, fails as `solution_not_called`. A pasted traceback does not count as that call.
+- Replay refuses oversized `**` and string-multiply literals in `python -c`.
+
 - Rewrite `docs/scorer.md` around PASS vs BLOCK and human meanings of fail reasons; put replay and task JSON in a skippable appendix
 - Rewrite GitHub-facing docs in full sentences (README, getting-started, find-a-run, scorer, tasks, CONTRIBUTING) so a person can follow them without treating them as a machine checklist
 - Redact local `$HOME` username from docs and sample-run evidence

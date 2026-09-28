@@ -45,7 +45,7 @@ Imagine a take-home exam. The inspector does not re-grade the math from scratch.
 - There is evidence that includes **commands** (the kind of thing you could paste into a terminal) and, usually, what those commands printed.
 - There is a critic file with a clear vote: accept, accept with named exceptions, or reject.
 - The score file’s vote matches the critic. You cannot have the critic say reject and the score file say accept.
-- If the critic listed blockers, the vote has to be reject (unless a **human** wrote an override — Grok is not allowed to write that).
+- If the critic listed blockers, the vote has to be reject. A note in `score.json` does not overrule that. A person can pass `--honor-override` on the scorer or the ship-gate, and only then do `override.by` and `override.reason` count.
 - If the task said “you must show `273.15`” or “you must show a failing test then a passing one,” that proof has to appear in the evidence **as command output**, not as a sentence in the margin.
 
 If the agent wrote “this should work” or “this was too hard” in the evidence, the inspector treats that as quitting, even if the score file claims otherwise. The plan is allowed to say “do not quit because it is too hard.” That is a warning to the agent, not a confession.
@@ -58,13 +58,15 @@ The summary may print a machine name. Here is the human version.
 
 **It looks like they quit (`quit_early`).** The evidence sounds like they stopped (“should work,” “too hard,” “gave up”), or the task required a first failing test and a later fix and only the success is there, or there are no commands at all.
 
-**The critic said no (`REJECT`).** A second pass found a blocker. You can only force a pass with a human override that names who overrode and why. Do not let the model fill that in.
+**The critic said no (`REJECT`).** A second pass found a blocker. Filling in `override` inside the run folder does not force a pass. Pass `--honor-override` yourself if you mean to overrule it, and put your name and a reason in the file.
 
 **There is no proof (`missing_evidence` or `evidence_has_no_commands`).** The evidence file is a story, or the critic said required checks were never run. A sitting without output is not a sitting.
 
 **This was a fake persist (`dry_run`).** You scored a folder from `run.py --dry-run`. It is supposed to fail. Run a real persist if you meant to test the AI.
 
 **A required example is missing (`required_verification`).** The task asked for specific output (a temperature, a line like `ab -> False`). It did not show up where commands and their printed results live. Hiding it in a comment does not count.
+
+**The command never called the solution (`solution_not_called`).** The required strings showed up, but no command both imported `harness_tmp` and called that function. Printing the expected text is not a run of the solution. A traceback pasted onto an old command does not count as that call.
 
 If the folder is missing files or the critic headings are wrong, the inspector will say the packet is malformed instead of grading it. That is also a fail. Send Grok back to write the four files properly.
 
@@ -96,11 +98,11 @@ python3 harness/score.py --replay runs/YOUR-FOLDER
 
 This is **off** unless you ask for it. It tries to run some of the commands in the evidence again on your machine, to see if the transcript was fake.
 
-Leave it off if you do not trust the folder, and leave it off for `examples/sample-run`. Only a small kind of `python -c` and a few `git` lookups are allowed. Dangerous-looking commands are refused and are not started.
+Leave it off if you do not trust the folder, and leave it off for `examples/sample-run`. Only a small kind of `python -c` and a few `git` lookups are allowed. Dangerous-looking commands are refused and are not started. Python is started in isolated mode from the interpreter you used to launch the scorer, not from whatever path the evidence wrote down. Git is started with hook, fsmonitor, and external-diff settings turned off for that one command.
 
-If replay disagrees with what the evidence claimed, that counts as missing proof.
+Replayed `python -c` can still import `harness_tmp` and run that module. Read the command before you turn replay on. If replay disagrees with what the evidence claimed, that counts as missing proof.
 
-Ship-gate, on a **live** folder, may replay on its own. Practice folders under `examples/` are never executed this way.
+Ship-gate does not re-run commands. Practice folders under `examples/` are never executed either. Replay happens only when you pass `--replay` to `score.py`.
 
 ---
 

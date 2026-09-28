@@ -24,5 +24,11 @@ jobs:
       - name: Scorer unit tests
         run: python3 harness/test_score.py
 
+      - name: Scorer and ship-gate selftest
+        run: python3 harness/score_selftest.py
+
       - name: Passing fixture
         run: python3 harness/score.py examples/sample-run
+
+      - name: Ship-gate on the passing fixture
+        run: python3 harness/ship_gate.py examples/sample-run

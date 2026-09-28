@@ -640,10 +640,13 @@ class ReplaySandbox(unittest.TestCase):
             )
         )
         spawned: list[list[str]] = []
+        real_run = subprocess.run
 
-        def fake_run(argv, **_kwargs):
+        def fake_run(argv, **kwargs):
+            if Path(argv[0]).name == "git":
+                return real_run(argv, **kwargs)
             spawned.append(list(argv))
-            payload = argv[2] if len(argv) >= 3 and argv[1] == "-c" else ""
+            payload = (kwargs.get("env") or {}).get("DAGZ_REPLAY_C", "")
             if "print('identities ok')" in payload:
                 stdout = "identities ok\n"
             else:
@@ -665,7 +668,7 @@ class ReplaySandbox(unittest.TestCase):
                 any("score.py" in str(part) for argv in spawned for part in argv)
             )
             self.assertTrue(spawned)
-            self.assertTrue(all(argv[:2] == ["python3", "-c"] for argv in spawned))
+            self.assertTrue(all(argv[1:4] == ["-I", "-S", "-c"] for argv in spawned))
             actions = [p["action"] for p in result["replay"]["pairs"]]
             self.assertEqual(actions[0], "harness_cli")
             self.assertIn("executed", actions)
@@ -708,10 +711,14 @@ class ReplaySandbox(unittest.TestCase):
         self.assertEqual(actions, ["executed", "historical_red", "executed"])
         spawned = [list(c.args[0]) for c in mock_run.call_args_list]
         self.assertEqual(len(spawned), 2)
-        self.assertEqual(spawned[0][:2], ["git", "rev-parse"])
-        self.assertEqual(spawned[1][:2], ["python3", "-c"])
-        self.assertNotIn(LIVE_C_RED, spawned[1][2])
-        self.assertIn("green ok", spawned[1][2])
+        self.assertEqual(Path(spawned[0][0]).name, "git")
+        self.assertIn("rev-parse", spawned[0])
+        self.assertIn("core.fsmonitor=", spawned[0])
+        self.assertEqual(spawned[1][1:4], ["-I", "-S", "-c"])
+        green_env = mock_run.call_args_list[1].kwargs["env"]
+        self.assertNotIn("PYTHONPATH", green_env)
+        self.assertIn("green ok", green_env["DAGZ_REPLAY_C"])
+        self.assertNotIn(LIVE_C_RED, green_env["DAGZ_REPLAY_C"])
         for call in mock_run.call_args_list:
             kwargs = call.kwargs
             self.assertFalse(kwargs.get("shell"))
@@ -719,18 +726,25 @@ class ReplaySandbox(unittest.TestCase):
             self.assertEqual(kwargs.get("timeout"), 15)
 
     def test_sample_run_without_replay_no_subprocess(self) -> None:
-        with mock.patch("replay.subprocess.run") as mock_run:
+        with mock.patch("replay.subprocess.run", wraps=subprocess.run) as mock_run:
             result = score.score_run(SAMPLE, SCHEMA)
         self.assertTrue(result["ok"], result)
         self.assertIsNone(result["replay"])
-        self.assertEqual(mock_run.call_count, 0)
+        self._assert_only_head_reads(mock_run.call_args_list)
 
     def test_sample_run_replay_skips_examples_fixture(self) -> None:
-        with mock.patch("replay.subprocess.run") as mock_run:
+        with mock.patch("replay.subprocess.run", wraps=subprocess.run) as mock_run:
             result = score.score_run(SAMPLE, SCHEMA, replay=True)
         self.assertTrue(result["ok"], result)
         self.assertEqual(result["replay"]["skipped"], "examples fixture")
-        self.assertEqual(mock_run.call_count, 0)
+        self._assert_only_head_reads(mock_run.call_args_list)
+
+    def _assert_only_head_reads(self, calls: list) -> None:
+        self.assertGreaterEqual(len(calls), 1)
+        for call in calls:
+            argv = list(call.args[0])
+            self.assertEqual(Path(argv[0]).name, "git")
+            self.assertTrue("rev-parse" in argv or "show" in argv)
 
     def test_mismatch_is_missing_evidence_never_a_waiver(self) -> None:
         evidence = (
@@ -753,6 +767,98 @@ class ReplaySandbox(unittest.TestCase):
             self.assertTrue(result["score"]["missing_evidence"])
             self.assertEqual(result["score"]["waivers"], before["waivers"])
             self.assertTrue(result["replay"]["mismatch"])
+
+
+class SecurityRegressions(unittest.TestCase):
+    def test_huge_allocation_denied(self) -> None:
+        with self.assertRaises(replay.ReplayDenied) as ctx:
+            replay.replay_allowed_c("print('A'*(10**9))")
+        self.assertEqual(str(ctx.exception), "size")
+
+    def test_echo_without_solution_call_fails(self) -> None:
+        evidence = (
+            "# Evidence\n\n"
+            + _fence(
+                "python3 -c \"print('273.15'); print('373.15'); print('-273.15'); print('-273.16')\"",
+                "273.15\n373.15\n-273.15\n-273.16\n",
+                "Process exit: 0\n",
+            )
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = _copy_sample(Path(tmp))
+            (run_dir / "evidence.md").write_text(evidence, encoding="utf-8")
+            result = score.score_run(run_dir, SCHEMA)
+        self.assertFalse(result["ok"], result)
+        self.assertEqual(result["fail_reasons"], ["solution_not_called"])
+
+    def test_json_override_is_not_enough(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = _copy_sample(Path(tmp))
+            critic = (run_dir / "critic.md").read_text(encoding="utf-8")
+            critic = critic.replace("- none", "- offset is wrong", 1)
+            critic = critic.replace("ACCEPT WITH WAIVERS", "REJECT")
+            (run_dir / "critic.md").write_text(critic, encoding="utf-8")
+            _patch_score(
+                run_dir,
+                verdict="REJECT",
+                waivers=[],
+                override={"by": "the-agent", "reason": "self waiver"},
+            )
+            blocked = score.score_run(run_dir, SCHEMA)
+            honored = score.score_run(run_dir, SCHEMA, honor_override=True)
+        self.assertIn("REJECT", blocked["fail_reasons"])
+        self.assertNotIn("REJECT", honored["fail_reasons"])
+        self.assertTrue(honored["ok"], honored)
+
+    def test_sitecustomize_not_executed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            canary = root / "canary"
+            (root / "sitecustomize.py").write_text(
+                f"open({str(canary)!r}, 'w').write('site')\n",
+                encoding="utf-8",
+            )
+            evidence = _fence('python3 -c "print(1)"', "1", "Process exit: 0\n")
+            result = replay.replay_evidence(evidence, repo_root=root)
+        self.assertEqual(result["pairs"][0]["action"], "executed", result)
+        self.assertFalse(canary.exists())
+
+    def test_fsmonitor_not_executed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            canary = root / "canary"
+            hook = root / "hook.sh"
+            hook.write_text(f"#!/bin/sh\nprintf x > {canary}\n", encoding="utf-8")
+            hook.chmod(0o755)
+            subprocess.run(
+                ["git", "-C", str(root), "config", "core.fsmonitor", str(hook)],
+                check=True,
+            )
+            (root / "README").write_text("a\n", encoding="utf-8")
+            evidence = _fence("git status --porcelain", prose="Process exit: 0\n")
+            result = replay.replay_evidence(evidence, repo_root=root)
+        self.assertFalse(canary.exists(), result)
+        self.assertEqual(result["pairs"][0]["action"], "executed", result)
+
+    def test_run_id_cannot_escape_out_dir(self) -> None:
+        import run as runmod
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out"
+            out.mkdir()
+            code = runmod.main(
+                [
+                    "--dry-run",
+                    "--out-dir",
+                    str(out),
+                    "--run-id",
+                    "../escape",
+                    str(REPO_ROOT / "tasks" / "001-units-trap.md"),
+                ]
+            )
+            self.assertEqual(code, 2)
+            self.assertFalse((Path(tmp) / "escape").exists())
 
 
 def _required_verification_section(text: str) -> str | None:

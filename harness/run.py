@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -24,13 +25,38 @@ def utc_stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+_RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$")
+
+
 def slug(task_path: Path) -> str:
-    return task_path.stem.replace(" ", "-")[:40]
+    raw = re.sub(r"[^A-Za-z0-9._-]+", "-", task_path.stem)[:40].strip(".-")
+    return raw or "task"
 
 
 def write_text(path: Path, content: str) -> None:
+    """Write a regular file. Do not follow a symlink that is already there."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags, 0o644)
+    except OSError as exc:
+        raise OSError(f"refusing to follow symlink: {path}") from exc
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(content)
+
+
+def run_directory(out_dir: Path, run_id: str) -> Path:
+    if _RUN_ID.match(run_id) is None:
+        raise ValueError(f"run id must be a single safe name, got {run_id!r}")
+    parent = out_dir.expanduser().resolve()
+    run_dir = (parent / run_id).resolve()
+    try:
+        run_dir.relative_to(parent)
+    except ValueError as exc:
+        raise ValueError(f"run directory escapes {parent}") from exc
+    return run_dir
 
 
 def dry_run_artifacts(run_dir: Path, task_path: Path, task_text: str) -> None:
@@ -220,7 +246,10 @@ def _record_attempts(run_dir: Path, n: int) -> None:
     if not isinstance(data, dict):
         return
     data["attempts"] = int(n)
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    try:
+        write_text(path, json.dumps(data, indent=2) + "\n")
+    except OSError as exc:
+        print(f"error: not recording attempts: {exc}", file=sys.stderr)
 
 
 def run_live(task_path: Path, run_dir: Path, task_text: str) -> int:
@@ -293,10 +322,18 @@ def main(argv: list[str] | None = None) -> int:
 
     task_text = task_path.read_text(encoding="utf-8")
     run_id = args.run_id or f"{utc_stamp()}-{slug(task_path)}"
-    run_dir = (args.out_dir.expanduser().resolve() / run_id)
+    try:
+        run_dir = run_directory(args.out_dir, run_id)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
     if args.dry_run:
-        dry_run_artifacts(run_dir, task_path, task_text)
+        try:
+            dry_run_artifacts(run_dir, task_path, task_text)
+        except OSError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
         missing = [name for name in REQUIRED if not (run_dir / name).is_file()]
         if missing:
             print(f"error: dry-run failed to write {missing}", file=sys.stderr)

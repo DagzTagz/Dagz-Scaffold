@@ -263,14 +263,59 @@ def count_command_blocks(evidence: str) -> int:
     return sum(1 for _info, body in extract_fences(evidence) if is_command_fence(body))
 
 
-def _human_override(payload: dict) -> bool:
-    """True only when a human filled override.by and override.reason."""
+def _human_override(payload: dict, *, honor: bool) -> bool:
+    """True only when the human passed --honor-override and filled both fields.
+
+    The run folder is written by the agent. Strings in score.json are not
+    evidence that a person agreed.
+    """
+    if not honor:
+        return False
     ov = payload.get("override")
     if not isinstance(ov, dict):
         return False
     by = ov.get("by")
     reason = ov.get("reason")
     return bool(isinstance(by, str) and by.strip() and isinstance(reason, str) and reason.strip())
+
+
+_HARNESS_IMPORT = re.compile(
+    r"from\s+harness_tmp(?:\.[\w]+)*\s+import\s+([^;\n]+)"
+)
+
+
+def fence_calls_solution(body: str) -> bool:
+    """True when a command fence imports harness_tmp and calls that name."""
+    names: list[str] = []
+    for match in _HARNESS_IMPORT.finditer(body):
+        for part in match.group(1).split(","):
+            piece = part.strip().strip("\\").strip()
+            if not piece or piece == "*":
+                continue
+            if " as " in piece:
+                piece = piece.split(" as ", 1)[1].strip()
+            else:
+                piece = piece.split()[0]
+            if piece.isidentifier():
+                names.append(piece)
+    return any(re.search(rf"\b{re.escape(name)}\s*\(", body) for name in names)
+
+
+def solution_was_called(evidence: str) -> bool:
+    """A pasted traceback does not count as the call. Another command must."""
+    from replay import extract_pairs
+
+    pairs = extract_pairs(evidence)
+    if pairs:
+        return any(
+            fence_calls_solution(pair.command_body) and not pair.historical_red
+            for pair in pairs
+        )
+    return any(
+        fence_calls_solution(body)
+        for _info, body in extract_fences(evidence)
+        if is_command_fence(body)
+    )
 
 
 def derive_scores(
@@ -345,9 +390,23 @@ def command_and_output_lines(evidence: str) -> list[str]:
     return lines
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    out: dict[str, object] = {}
+    for key, value in pairs:
+        if key in out:
+            raise ScoreError(f"score.json duplicate key: {key}")
+        out[key] = value
+    return out
+
+
 def load_score(path: Path) -> dict:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_keys,
+        )
+    except ScoreError:
+        raise
     except json.JSONDecodeError as exc:
         raise ScoreError(f"score.json is not valid JSON: {exc}") from exc
     if not isinstance(data, dict):
@@ -355,7 +414,13 @@ def load_score(path: Path) -> dict:
     return data
 
 
-def score_run(run_dir: Path, schema: dict, replay: bool = False) -> dict:
+def score_run(
+    run_dir: Path,
+    schema: dict,
+    replay: bool = False,
+    *,
+    honor_override: bool = False,
+) -> dict:
     missing = [name for name in REQUIRED_FILES if not (run_dir / name).is_file()]
     if missing:
         raise ScoreError(f"missing artifacts: {', '.join(missing)}")
@@ -426,7 +491,9 @@ def score_run(run_dir: Path, schema: dict, replay: bool = False) -> dict:
     fail_reasons: list[str] = []
     if payload["quit_early"]:
         fail_reasons.append("quit_early")
-    if payload["verdict"] == "REJECT" and not _human_override(payload):
+    if payload["verdict"] == "REJECT" and not _human_override(
+        payload, honor=honor_override
+    ):
         fail_reasons.append("REJECT")
     if payload["missing_evidence"]:
         fail_reasons.append("missing_evidence")
@@ -459,6 +526,12 @@ def score_run(run_dir: Path, schema: dict, replay: bool = False) -> dict:
                 payload = dict(payload)
                 payload["missing_evidence"] = True
                 fail_reasons.append("missing_evidence")
+
+    needs_call = contract is not None and (
+        bool(contract.must_appear) or contract.red_then_green
+    )
+    if needs_call and not fail_reasons and not solution_was_called(evidence):
+        fail_reasons.append("solution_not_called")
 
     fail_reasons = list(dict.fromkeys(fail_reasons))
 
@@ -497,6 +570,12 @@ def main(argv: list[str] | None = None) -> int:
         default=False,
         help="Re-run allowlisted python -c and git from evidence (local subprocess, no network)",
     )
+    parser.add_argument(
+        "--honor-override",
+        action="store_true",
+        default=False,
+        help="Accept score.json override.by and override.reason. The file alone does not.",
+    )
     args = parser.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
@@ -506,7 +585,12 @@ def main(argv: list[str] | None = None) -> int:
 
     schema_path = Path(__file__).resolve().parent / "schema" / "run.schema.json"
     try:
-        result = score_run(run_dir, load_schema(schema_path), replay=args.replay)
+        result = score_run(
+            run_dir,
+            load_schema(schema_path),
+            replay=args.replay,
+            honor_override=args.honor_override,
+        )
     except ScoreError as exc:
         error_doc = {
             "ok": False,

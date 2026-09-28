@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import NamedTuple
 
@@ -113,11 +115,50 @@ def parse_task_contract(text: str, path: Path) -> TaskContract | None:
     )
 
 
+def _git_repo(repo_root: Path) -> bool:
+    git = shutil.which("git")
+    if not git:
+        return False
+    completed = subprocess.run(
+        [git, "-c", "core.fsmonitor=", "-c", "core.hooksPath=/dev/null", "rev-parse", "--is-inside-work-tree"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    return completed.returncode == 0 and completed.stdout.strip() == "true"
+
+
+def _head_task_text(repo_root: Path, rel: str) -> str | None:
+    git = shutil.which("git")
+    if not git:
+        return None
+    completed = subprocess.run(
+        [
+            git,
+            "-c",
+            "core.fsmonitor=",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "show",
+            f"HEAD:{rel}",
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        return None
+    return completed.stdout
+
+
 def load_task_contract(repo_root: Path, task_rel: str) -> TaskContract | None:
     repo_root = repo_root.resolve()
     tasks_root = (repo_root / "tasks").resolve()
     raw = Path(task_rel)
-    resolved = raw.resolve() if raw.is_absolute() else (repo_root / raw).resolve()
+    candidate = raw if raw.is_absolute() else (repo_root / raw)
+    if candidate.is_symlink():
+        raise ContractError(f"task path is a symlink: {task_rel}")
+    resolved = candidate.resolve()
     try:
         resolved.relative_to(repo_root)
     except ValueError as exc:
@@ -128,4 +169,12 @@ def load_task_contract(repo_root: Path, task_rel: str) -> TaskContract | None:
         raise ContractError(f"task path is not under tasks/: {task_rel}") from exc
     if not resolved.is_file():
         raise ContractError(f"task path is not a file: {task_rel}")
-    return parse_task_contract(resolved.read_text(encoding="utf-8"), resolved)
+    text = resolved.read_text(encoding="utf-8")
+    rel = resolved.relative_to(repo_root).as_posix()
+    if _git_repo(repo_root):
+        head = _head_task_text(repo_root, rel)
+        if head is None:
+            raise ContractError(f"task file is not committed at HEAD: {task_rel}")
+        if head.replace("\r\n", "\n") != text.replace("\r\n", "\n"):
+            raise ContractError(f"task file differs from HEAD: {task_rel}")
+    return parse_task_contract(text, resolved)
