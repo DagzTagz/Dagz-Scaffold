@@ -22,8 +22,11 @@ For any non-trivial work (more than a one-line fix or a pure question):
    without `runs/<id>/score.json`.
 5. **Ship-gate.** Run `python harness/ship_gate.py runs/<id> --git-checks`. If
    it exits non-zero, the run is not done. Do not skip this program. `REJECT`
-   returns work to the builder. The run cannot complete on `REJECT`.
-   `ACCEPT WITH WAIVERS` requires explicit waivers in `score.json`.
+   returns work to the builder. The run cannot complete on `REJECT`. Writing
+   `override` into `score.json` does not clear it. Only a human may pass
+   `--honor-override`, and only with both `override.by` and `override.reason`.
+   Do not pass that flag. `ACCEPT WITH WAIVERS` requires explicit waivers in
+   `score.json`.
 
 Invoke `/persist` to run this loop. Invoke `/ship-gate` before you say done.
 
@@ -62,6 +65,6 @@ is used or the critic verdict is `ACCEPT` / `ACCEPT WITH WAIVERS`.
 
 - Python 3.11+, **stdlib only** for harness code. No surprise pip packages.
 - `harness/run.py --dry-run` must not call the network or the model.
-- `harness/score.py` reads local files; `--replay` is local subprocess, no network.
-- Keep `--replay` default off.
+- `harness/score.py` reads local files. `--replay` is a local subprocess, no network, and stays off unless a human passes it. Python runs isolated (`-I -S`) from the scorer's interpreter. Git runs from a binary outside the checkout, against a temporary git dir that does not load that checkout's config. `git status` and `git diff` do not enter submodules. A symlinked `.git` is refused. Importing `harness_tmp` still runs that module.
+- Ship-gate does not replay. It does read the run folder for secret-shaped text and symlink artifacts.
 - Do not commit `runs/`, `.env`, keys, or Grok session state.

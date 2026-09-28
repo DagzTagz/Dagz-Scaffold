@@ -92,7 +92,7 @@ python3 harness/score.py runs/<id>
 python3 harness/score.py runs/score.json
 ```
 
-`--git-checks` looks at whether **this clone** has staged a live `runs/` folder or a secret-shaped file. Use it on a live packet. Skip it on `examples/sample-run`.
+`--git-checks` looks at whether **this clone** has staged a live `runs/` folder or a secret-shaped file. Use it on a live packet. Skip it on `examples/sample-run`. With or without that flag, ship-gate still reads the run folder itself for secret-shaped text and for a symlink in place of a packet file.
 
 ---
 
@@ -100,7 +100,7 @@ python3 harness/score.py runs/score.json
 
 If ship-gate prints `SHIP-GATE: PASS` and both commands exit 0, the packet is complete enough to consider shipping. You should still open the diff. The inspector did not read your product the way a human reviewer does.
 
-If it prints `SHIP-GATE: BLOCK`, or `score.py` exits 1, it is not shipped. The summary line will name reasons such as `quit_early`, `REJECT`, or `missing_evidence`. Give those back to Grok. Do not merge because the conversation was polite.
+If it prints `SHIP-GATE: BLOCK`, or `score.py` exits 1, it is not shipped. The summary line will name reasons such as `quit_early`, `REJECT`, `missing_evidence`, `required_verification`, or `solution_not_called`. Give those back to Grok. Do not merge because the conversation was polite. A `REJECT` stays blocked if the only change was an `override` written into `score.json`. Passing that takes `--honor-override` from you, plus a name and a reason in the file. [scorer.md](scorer.md) translates the short names.
 
 ---
 

@@ -75,9 +75,9 @@ You open a second terminal, find the new folder under `runs/`, and run the inspe
 
 `score.py` is a cheap lie detector. It checks that files exist, that the critic and score file agree, that evidence has real commands, and that required phrases from the task showed up. It does **not** prove the science by itself. You still read the diff.
 
-`ship_gate.py` is the bouncer at the door. If it prints `BLOCK`, you do not merge.
+`ship_gate.py` is the bouncer at the door. If it prints `BLOCK`, you do not merge. A `REJECT` written into `score.json` stays a block until you pass `--honor-override` yourself and the file names who did that and why. The ship-gate also reads the folder for secret-shaped text and for a symlink standing in for one of the packet files. It does not re-run the commands.
 
-Optional `--replay` re-runs a **small allowlist** of commands from evidence on your machine. It is off by default. Do not replay evidence you have not read.
+Optional `--replay` re-runs a **small allowlist** of commands from evidence on your machine. It is off by default. Python is isolated, and git is pointed at a temporary directory that does not load this checkout's config. Do not replay evidence you have not read. The longer version is in [docs/scorer.md](docs/scorer.md).
 
 ## Docs map
 

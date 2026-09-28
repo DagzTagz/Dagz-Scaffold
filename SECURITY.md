@@ -125,7 +125,9 @@ This does **not** cover attacks on infrastructure you do not own, spam, malware,
 
 Live `run.py` (no `--dry-run`) shells out to `grok -p`, which may send repository context to xAI under **your** account.
 
-`--replay` is a **local** subprocess of AST-allowlisted `python -c` and allowlisted `git`. It is off unless you pass the flag. Denied commands are not spawned. Python is the interpreter that launched the scorer, in isolated mode (`-I -S`), so a `sitecustomize.py` in the repo is not imported at startup. Git is pointed at a temporary git directory that shares objects but does not load the checkout's config, so a clean filter or a signature program configured there is not started. `git status` and `git diff` do not enter submodules. Importing `harness_tmp` still runs that module as you. Do not replay evidence you have not read.
+`--replay` is a **local** subprocess of AST-allowlisted `python -c` and allowlisted `git`. It is off unless you pass the flag. Denied commands are not spawned. Python is the interpreter that launched the scorer, in isolated mode (`-I -S`), so a `sitecustomize.py` in the repo is not imported at startup. Git is a binary outside the checkout, pointed at a temporary git directory that shares objects but does not load the checkout's config, so a clean filter or a signature program configured there is not started. `git status` and `git diff` do not enter submodules. A symlinked `.git` is refused. Importing `harness_tmp` still runs that module as you. Do not replay evidence you have not read.
+
+Ship-gate does not re-run evidence. It does read the run folder for secret-shaped text and for symlink artifacts. `run.py --run-id` has to be one plain name under `--out-dir`, and those writes do not follow a symlink. In a git checkout the task file being scored has to match `HEAD` and cannot itself be a symlink. A `REJECT` in `score.json` stays a block unless a person passes `--honor-override` and fills in `override.by` and `override.reason`.
 
 This harness does not ship API keys. Do not copy `~/.grok/auth.json`, `~/.xai_api_key`, SSH keys, or cloud credentials into the repo.
 
@@ -135,7 +137,7 @@ This harness does not ship API keys. Do not copy `~/.grok/auth.json`, `~/.xai_ap
 
 v0 ships **no** executable project hook that phones home.
 
-**Allowed later:** a **read-only** GitHub Actions workflow that runs `python3 harness/score_selftest.py`, `score.py examples/sample-run`, and `ship_gate.py examples/sample-run` with **no** repository secrets and **no** `grok`. That is the same idea as hypothesis-engine’s offline CI.
+The read-only workflow in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `python3 harness/test_score.py`, `python3 harness/score_selftest.py`, `python3 harness/score.py examples/sample-run`, and `python3 harness/ship_gate.py examples/sample-run` with **no** repository secrets and **no** `grok`.
 
 Do **not** add Actions that check out untrusted PRs with **write** credentials.
 

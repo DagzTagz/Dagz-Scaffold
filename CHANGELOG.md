@@ -60,11 +60,16 @@ Scoring a `--dry-run` folder exits **1** (`dry_run`). That is expected.
 - Replay refuses oversized `**` and string-multiply literals in `python -c`.
 - Replay no longer loads the checkout's git config. Clean filters, included config, and `gpg.program` are not started. `git status` and `git diff` do not enter submodules. A symlinked `.git` is refused.
 
+### Changed
+
+- A `REJECT` in `score.json` passes only when a person passes `--honor-override` and both `override.by` and `override.reason` are filled in. The file alone does not.
+
+### Added
+
 - Rewrite `docs/scorer.md` around PASS vs BLOCK and human meanings of fail reasons; put replay and task JSON in a skippable appendix
 - Rewrite GitHub-facing docs in full sentences (README, getting-started, find-a-run, scorer, tasks, CONTRIBUTING) so a person can follow them without treating them as a machine checklist
 - Redact local `$HOME` username from docs and sample-run evidence
 - [docs/find-a-run.md](docs/find-a-run.md) — step-by-step: list `runs/`, copy the folder name, point score/ship-gate at it
 - Live `run.py` scores after `grok -p` and retries once (cap 2); records `attempts`
-- Human-only `override: { by, reason }` may pass a REJECT through score/ship-gate
 - Named fail fixtures `examples/quit-early-run`, `reject-run`, `fake-green-run`
 - `harness/test_score.py`; optional read-only CI (no grok, no secrets)

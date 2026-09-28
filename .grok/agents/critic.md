@@ -32,5 +32,5 @@ Rules:
 - Do not polish. Do not "suggest a nicer name" as a substitute for a miss.
 - Do not implement the fix.
 - Cite paths and commands.
-- **Never invent `score.json` override.** Only a human sets override.by/reason.
+- **Never invent `score.json` override.** Only a human sets override.by/reason, and only a human may pass `--honor-override`. The file alone does not clear a REJECT.
 - A skeptic who only has critic.md + evidence.md should see why you voted.

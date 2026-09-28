@@ -23,7 +23,7 @@ python3 harness/ship_gate.py runs/YOUR-FOLDER --git-checks
 
 If the first command says the path is not a directory, you pointed it at a file or a typo. Use the folder name from `ls runs/`, not `score.json` by itself.
 
-You can skip `--git-checks` when you are only practicing on `examples/sample-run`. Use `--git-checks` on a live folder so it also looks for secrets or a `runs/` directory accidentally staged for commit.
+You can skip `--git-checks` when you are only practicing on `examples/sample-run`. The ship-gate still reads that folder for secret-shaped text and for a symlink in place of a packet file. Use `--git-checks` on a live folder so it also looks at what this clone has staged: a secret, or a `runs/` directory on its way into a commit.
 
 ---
 
@@ -31,7 +31,7 @@ You can skip `--git-checks` when you are only practicing on `examples/sample-run
 
 `score.py` is the picky reader. It opens the four files in the folder and checks they agree with each other and with the task.
 
-`ship_gate.py` is the same check with a yes/no line you can read from across the room. On a live folder it can also look at git (the `--git-checks` part).
+`ship_gate.py` is the same check with a yes/no line you can read from across the room. It always reads the run folder for secret-shaped text and for a symlink standing in for a packet file. It does not re-run the commands. On a live folder, `--git-checks` also looks at what this clone has staged.
 
 Neither one calls Grok. Neither one calls the internet. They only read what is already on disk (unless you later turn on `--replay`, which is optional and described at the bottom).
 
@@ -46,7 +46,7 @@ Imagine a take-home exam. The inspector does not re-grade the math from scratch.
 - There is a critic file with a clear vote: accept, accept with named exceptions, or reject.
 - The score file’s vote matches the critic. You cannot have the critic say reject and the score file say accept.
 - If the critic listed blockers, the vote has to be reject. A note in `score.json` does not overrule that. A person can pass `--honor-override` on the scorer or the ship-gate, and only then do `override.by` and `override.reason` count.
-- If the task said “you must show `273.15`” or “you must show a failing test then a passing one,” that proof has to appear in the evidence **as command output**, not as a sentence in the margin.
+- If the task said “you must show `273.15`” or “you must show a failing test then a passing one,” that proof has to appear in a command fence or in the output fence paired with it, not as a sentence in the margin. The command also has to call the solution. Printing the string by itself is not enough.
 
 If the agent wrote “this should work” or “this was too hard” in the evidence, the inspector treats that as quitting, even if the score file claims otherwise. The plan is allowed to say “do not quit because it is too hard.” That is a warning to the agent, not a confession.
 
@@ -98,7 +98,7 @@ python3 harness/score.py --replay runs/YOUR-FOLDER
 
 This is **off** unless you ask for it. It tries to run some of the commands in the evidence again on your machine, to see if the transcript was fake.
 
-Leave it off if you do not trust the folder, and leave it off for `examples/sample-run`. Only a small kind of `python -c` and a few `git` lookups are allowed. Dangerous-looking commands are refused and are not started. Python is started in isolated mode from the interpreter you used to launch the scorer, not from whatever path the evidence wrote down. Git is started against a temporary git directory, so the checkout's config (clean filters, signature programs, hooks, fsmonitor, external diff) is not used for that command. `git status` and `git diff` do not enter submodules.
+Leave it off if you do not trust the folder, and leave it off for `examples/sample-run`. Only a small kind of `python -c` and a few `git` lookups are allowed. Dangerous-looking commands are refused and are not started. Python is started in isolated mode from the interpreter you used to launch the scorer, not from whatever path the evidence wrote down. Git is a binary outside the checkout, pointed at a temporary git directory, so the checkout's config is not used: clean filters, signature programs, hooks, fsmonitor, and external diff stay off for that command. `git status` and `git diff` do not enter submodules. A symlinked `.git` is refused.
 
 Replayed `python -c` can still import `harness_tmp` and run that module. Read the command before you turn replay on. If replay disagrees with what the evidence claimed, that counts as missing proof.
 

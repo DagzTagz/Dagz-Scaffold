@@ -55,7 +55,7 @@ Rules:
 - `VERDICT` is a single line: `REJECT` | `ACCEPT WITH WAIVERS` | `ACCEPT`.
 - `ACCEPT WITH WAIVERS` is invalid unless `RISKS` or `NITS` name the waived items and `score.json` will list them.
 - `REJECT` if any blocker exists, if required verification was never run, or if quit-early fired.
-- **Never invent a user override.** Do not add `override` to `score.json`. Only a human fills `override.by` and `override.reason`.
+- **Never invent a user override.** Do not add `override` to `score.json`. Only a human fills `override.by` and `override.reason`, and only a human may pass `--honor-override`. The file alone does not clear a `REJECT`.
 
 The sample ACCEPT-WITH-WAIVERS body lives in `examples/sample-run/critic.md` (fixture only). Do not copy it onto a live run that still has blockers.
 

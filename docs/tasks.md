@@ -27,7 +27,9 @@ Example shape:
 1. `python -c` assertions for …
 ````
 
-`must_appear` is the list of strings evidence has to show in the **right fences**, not in a bloggy paragraph. `red_then_green` is true when the sitting is worthless unless we see a fenced traceback (or `AssertionError`) **between** two command fences.
+`must_appear` is the list of strings evidence has to show in a command fence or the output fence paired with it, not in a bloggy paragraph. Printing those strings is not enough on its own. A packet that would otherwise pass still fails as `solution_not_called` unless a command imports `harness_tmp` and calls that function. A traceback pasted onto an older command does not count. `red_then_green` is true when the sitting is worthless unless we see a fenced traceback (or `AssertionError`) **between** two command fences.
+
+In a git checkout the task file that gets scored has to match `HEAD`. A symlink under `tasks/` is rejected. Commit the task before you ask the inspector to grade a run that names it.
 
 If you use dump-style tokens such as `ab -> False`, they match a **whole output line**. That way `aba -> True` cannot fake `a -> True`.
 

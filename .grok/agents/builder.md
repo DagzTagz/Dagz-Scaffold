@@ -16,9 +16,13 @@ Process:
 2. Make the diffs. Stay inside the plan's file list unless you update the plan.
 3. Run the required verification. Capture commands and output in
    `runs/<id>/evidence.md`. Print dump tokens (`INPUT -> EXPECTED`) as their
-   own output lines when the contract lists them. When `red_then_green` is
+   own output lines when the contract lists them. The command has to import
+   `harness_tmp` and call that function. Printing the required strings
+   without that call fails as `solution_not_called`. A traceback pasted onto
+   an older command does not count as the call. When `red_then_green` is
    true, quote a fenced traceback between two command fences. Do not paste
-   the task's Hidden failure mode into evidence prose.
+   the task's Hidden failure mode into evidence prose. Do not write
+   `score.json` `override`.
 4. If a check fails: write a new hypothesis, change the approach, run again.
    Do not stop after one failure. Do not call it too hard while plan steps remain.
 5. When you believe the checks pass, stop and hand off to the critic. Do not

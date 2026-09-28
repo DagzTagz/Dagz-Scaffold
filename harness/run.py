@@ -186,7 +186,7 @@ Required files: plan.md, critic.md, evidence.md, score.json plus real diffs.
 Loop: plan first, then builder, then critic, then python harness/score.py {rel_run}, then python harness/ship_gate.py {rel_run} --git-checks.
 If ship_gate.py exits non-zero, the run is not done. Do not skip this program.
 REJECT returns to the builder. Do not quit early. Do not declare done without score.json.
-Do not invent score.json override. Only a human may set override.by and override.reason.
+Do not invent score.json override. Only a human may set override.by and override.reason, and only a human may pass --honor-override.
 
 Task:
 ---
@@ -203,7 +203,7 @@ def retry_prompt(task_path: Path, run_dir: Path, task_text: str) -> str:
     if critic_path.is_file():
         critic = critic_path.read_text(encoding="utf-8")[:8000]
     return f"""REJECT returns to the builder. Do not bargain the verdict down.
-Do not invent score.json override.
+Do not invent score.json override. Do not pass --honor-override.
 
 The previous persist of {rel_task} did not pass score.py / ship-gate.
 Write artifacts into {rel_run}/. Fix the blockers and re-run verification.

@@ -27,7 +27,7 @@ A task is not done until `runs/<id>/` contains `plan.md`, diffs, `critic.md`, `e
 
    Verdict line is one of `REJECT` | `ACCEPT WITH WAIVERS` | `ACCEPT`.
 
-5. **REJECT → builder.** On `REJECT`, return the blockers to the builder. The run cannot complete. Do not bargain the verdict down.
+5. **REJECT → builder.** On `REJECT`, return the blockers to the builder. The run cannot complete. Do not bargain the verdict down. Do not write `override` into `score.json`, and do not pass `--honor-override`. A human has to do both, on purpose, or the gate still blocks.
 
 6. **Score.** Run `python harness/score.py runs/<id>` (or write `score.json` that the scorer accepts). Persistence and rigor are 0–1. Waivers must be explicit objects with `id` and `reason`.
 

@@ -124,7 +124,7 @@ Replace `<the-new-folder>` with the name `ls` printed. Again, [docs/find-a-run.m
 
 Smoke, dry-run, and `score.py` without `--replay` do not call the model.
 
-Live Grok is your account. Optional `python3 harness/score.py --replay runs/YOUR-FOLDER` re-runs a **small allowlist** of commands locally. Leave it off unless you trust that evidence. Never replay a packet you have not read.
+Live Grok is your account. Optional `python3 harness/score.py --replay runs/YOUR-FOLDER` re-runs a **small allowlist** of commands locally. Python is started isolated, and git does not load this checkout's config. Leave it off unless you trust that evidence. Never replay a packet you have not read. What that command will and will not do is in [docs/scorer.md](docs/scorer.md).
 
 Live folders stay on **your** disk. Git is set to ignore `runs/` (except a tiny placeholder). Do not `git add` them, do not paste them into GitHub issues, and do not commit `.env`, keys, or Grok session dumps.
 

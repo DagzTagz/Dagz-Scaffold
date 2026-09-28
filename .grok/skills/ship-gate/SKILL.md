@@ -15,13 +15,14 @@ Run `python harness/ship_gate.py runs/<id> --git-checks`. If it exits non-zero, 
 
 The program blocks on:
 
-1. **Score not ok** — `fail_reasons` from `score_run` (REJECT, missing_evidence, quit_early, required_verification, dry_run, missing artifacts, …).
-2. **Verdict `REJECT`** — uniq with score fail reasons.
-3. **`--git-checks`:** staged `runs/*` except `runs/.gitkeep`; staged secret names (`.env`, `.pem`, `.key`, `id_rsa`, `id_ed25519`, `auth.json`, `credentials.json`); staged blobs matching `XAI_API_KEY=` / `GITHUB_TOKEN=` / OpenSSH / `AKIA…` / `xai-` patterns; `git_missing`; `git_error`. Empty `.env.example` values do not match `\S+` after `=` and are OK.
+1. **Score not ok** — `fail_reasons` from `score_run` (`REJECT`, `missing_evidence`, `quit_early`, `required_verification`, `solution_not_called`, `dry_run`, missing artifacts, …).
+2. **Verdict `REJECT`** — same reason, deduped. A filled-in `override` does not clear it.
+3. **The run folder itself** — a symlink artifact, or secret-shaped text in a regular file there. This scan does not need `--git-checks`, and the program does not re-run evidence.
+4. **`--git-checks`:** staged `runs/*` except `runs/.gitkeep`; staged secret names (`.env`, `.envrc`, `.env.*`, `.pem`, `.key`, `.p12`, `.pfx`, `.npmrc`, `.netrc`, `id_rsa`, `id_ed25519`, `id_ecdsa`, `auth.json`, `credentials.json`); staged blobs matching `XAI_API_KEY=` / `GITHUB_TOKEN=` / `BEGIN … PRIVATE KEY` / `AKIA…` / `xai-` / `ghp_` / `github_pat_`; `git_missing`; `git_error`. Empty `.env.example` values do not match a secret, and that exact index path is not a secret name.
 
 `ACCEPT WITH WAIVERS` passes the gate only when the scorer already accepted explicit waivers.
 
-`REJECT` passes **only** when `score.json` has a human `override` with both `by` and `reason`. The model must not fill `override`.
+`REJECT` passes only when a human passes `--honor-override` **and** `score.json` has `override.by` and `override.reason`. The model must not fill `override` and must not pass `--honor-override`.
 
 Derived `persistence` / `rigor` / `attempts` / `recovered_after_failure` come from `score.py` stdout (`derived`), not from self-reported claims.
 
