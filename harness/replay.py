@@ -3,7 +3,8 @@
 
 Local subprocess only. No network. argv0 allowlist is not sufficient:
 python -c payloads go through an AST allowlist, and denied commands are
-never passed to subprocess.run.
+never passed to subprocess.run. Git is pointed at a temporary git
+directory that does not load the checkout's config.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import NamedTuple
 
@@ -183,7 +185,8 @@ REPLAY_STUB = (
     "src = os.environ['DAGZ_REPLAY_C']\n"
     "exec(compile(src, '<replay>', 'exec'), {'__name__': '__main__'})\n"
 )
-# Command-line config overrides repo .git/config and the user's global file.
+# Command-line config overrides anything still visible for this one command.
+# The temporary git dir below is what drops repo filter and gpg programs.
 GIT_CONFIG_OVERRIDES = (
     "core.fsmonitor=",
     "core.hooksPath=/dev/null",
@@ -191,7 +194,10 @@ GIT_CONFIG_OVERRIDES = (
     "core.pager=cat",
     "core.sshCommand=false",
     "maintenance.auto=false",
+    "log.showSignature=false",
+    "diff.ignoreSubmodules=all",
 )
+GIT_SKIP_SUBMODULES = ("status", "diff")
 GIT_NO_EXTERNAL = ("diff", "show", "log")
 PROXY_ENV = (
     "HTTP_PROXY",
@@ -565,7 +571,194 @@ def python_spawn(argv: list[str], repo_root: Path) -> tuple[list[str], dict[str,
     return spawn, env
 
 
-def git_spawn(argv: list[str], repo_root: Path) -> tuple[list[str], dict[str, str]]:
+def _read_regular(path: Path) -> bytes | None:
+    """Read a non-symlink file. None if it is missing, a symlink, or unreadable."""
+    if path.is_symlink() or not path.is_file():
+        return None
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        return None
+    try:
+        chunks: list[bytes] = []
+        while True:
+            block = os.read(fd, 1 << 20)
+            if not block:
+                return b"".join(chunks)
+            chunks.append(block)
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+
+
+def _write_regular(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags, 0o644)
+    try:
+        os.write(fd, data)
+    finally:
+        os.close(fd)
+
+
+def _copy_regular_tree(src: Path, dst: Path) -> None:
+    if src.is_symlink() or not src.is_dir():
+        return
+    dst.mkdir(parents=True, exist_ok=True)
+    for entry in os.scandir(src):
+        target = dst / entry.name
+        if entry.is_symlink():
+            continue
+        if entry.is_file(follow_symlinks=False):
+            data = _read_regular(Path(entry.path))
+            if data is not None:
+                _write_regular(target, data)
+        elif entry.is_dir(follow_symlinks=False):
+            _copy_regular_tree(Path(entry.path), target)
+
+
+def _gitdir_pointer(entry: Path) -> Path:
+    try:
+        text = entry.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise ReplayDenied("git_dir") from exc
+    raw = ""
+    for line in text.splitlines():
+        if line.startswith("gitdir:"):
+            raw = line.split(":", 1)[1].strip()
+            break
+    if not raw:
+        raise ReplayDenied("git_dir")
+    path = Path(raw)
+    if not path.is_absolute():
+        path = entry.parent / path
+    path = path.resolve()
+    if path.is_symlink() or not path.is_dir():
+        raise ReplayDenied("git_dir")
+    return path
+
+
+def _common_git_dir(git_dir: Path) -> Path:
+    marker = git_dir / "commondir"
+    if not marker.exists():
+        return git_dir
+    if marker.is_symlink() or not marker.is_file():
+        raise ReplayDenied("git_dir")
+    raw = marker.read_text(encoding="utf-8", errors="replace").strip()
+    if not raw:
+        raise ReplayDenied("git_dir")
+    path = Path(raw)
+    if not path.is_absolute():
+        path = git_dir / path
+    path = path.resolve()
+    if not path.is_dir():
+        raise ReplayDenied("git_dir")
+    return path
+
+
+class ReplayGitDir:
+    """Temporary git dir sharing objects, with the checkout config left behind.
+
+    Clean filters, signature programs, hooks, and includes live in the
+    checkout's config. Replaying against that directory would run them.
+    """
+
+    def __init__(self, repo_root: Path) -> None:
+        self.root = repo_root
+        self._tmp: tempfile.TemporaryDirectory[str] | None = None
+        self.git_dir: Path | None = None
+
+    def env_updates(self) -> dict[str, str]:
+        if self.git_dir is None:
+            return {}
+        return {
+            "GIT_DIR": str(self.git_dir),
+            "GIT_WORK_TREE": str(self.root),
+        }
+
+    def close(self) -> None:
+        if self._tmp is not None:
+            self._tmp.cleanup()
+            self._tmp = None
+            self.git_dir = None
+
+    @classmethod
+    def open(cls, repo_root: Path) -> "ReplayGitDir":
+        obj = cls(repo_root.resolve())
+        try:
+            try:
+                obj._populate()
+            except OSError as exc:
+                raise ReplayDenied("git_dir") from exc
+        finally:
+            # _populate sets git_dir only after the temp dir is ready.
+            if obj.git_dir is None:
+                obj.close()
+        return obj
+
+    def _locate(self) -> tuple[Path, Path] | None:
+        entry = self.root / ".git"
+        if entry.is_symlink():
+            raise ReplayDenied("git_dir")
+        if not entry.exists():
+            return None
+        if entry.is_dir():
+            git_dir = entry.resolve()
+        elif entry.is_file():
+            git_dir = _gitdir_pointer(entry)
+        else:
+            raise ReplayDenied("git_dir")
+        return git_dir, _common_git_dir(git_dir)
+
+    def _populate(self) -> None:
+        located = self._locate()
+        if located is None:
+            return
+        git_dir, common = located
+        self._tmp = tempfile.TemporaryDirectory(prefix="dagz-replay-git-")
+        dest = Path(self._tmp.name) / "git"
+        objects = dest / "objects"
+        (objects / "info").mkdir(parents=True)
+        (dest / "refs").mkdir()
+        alternate = str((common / "objects").resolve())
+        if "\n" in alternate:
+            raise ReplayDenied("git_dir")
+        _write_regular(objects / "info" / "alternates", (alternate + "\n").encode())
+        head = _read_regular(git_dir / "HEAD")
+        if head is None:
+            raise ReplayDenied("git_dir")
+        _write_regular(dest / "HEAD", head)
+        index = _read_regular(git_dir / "index")
+        if index is not None:
+            _write_regular(dest / "index", index)
+        sources = (common,) if common == git_dir else (common, git_dir)
+        for source in sources:
+            for name in ("packed-refs", "shallow"):
+                payload = _read_regular(source / name)
+                if payload is not None:
+                    _write_regular(dest / name, payload)
+            exclude = _read_regular(source / "info" / "exclude")
+            if exclude is not None:
+                _write_regular(dest / "info" / "exclude", exclude)
+            _copy_regular_tree(source / "refs", dest / "refs")
+        _write_regular(
+            dest / "config",
+            b"[core]\n"
+            b"\trepositoryformatversion = 0\n"
+            b"\tfilemode = true\n"
+            b"\tbare = false\n"
+            b"\tlogallrefupdates = false\n"
+            b"[log]\n"
+            b"\tshowSignature = false\n",
+        )
+        self.git_dir = dest
+
+
+def git_spawn(
+    argv: list[str], repo_root: Path, git_dir: ReplayGitDir
+) -> tuple[list[str], dict[str, str]]:
     tokens = argv[1:]
     if not tokens:
         raise ReplayDenied("git_no_subcommand")
@@ -573,9 +766,16 @@ def git_spawn(argv: list[str], repo_root: Path) -> tuple[list[str], dict[str, st
     config: list[str] = []
     for item in GIT_CONFIG_OVERRIDES:
         config.extend(["-c", item])
-    extra = ["--no-ext-diff", "--no-textconv"] if sub in GIT_NO_EXTERNAL else []
+    extra: list[str] = []
+    # status and diff otherwise hash a submodule with that repo's config.
+    if sub in GIT_SKIP_SUBMODULES:
+        extra.append("--ignore-submodules=all")
+    if sub in GIT_NO_EXTERNAL:
+        extra.extend(["--no-ext-diff", "--no-textconv"])
     spawn = [str(trusted_git(repo_root)), *config, sub, *extra, *rest]
-    return spawn, replay_env(repo_root)
+    env = replay_env(repo_root)
+    env.update(git_dir.env_updates())
+    return spawn, env
 
 
 def _run(
@@ -658,67 +858,73 @@ def replay_evidence(evidence: str, *, repo_root: Path | None = None) -> dict:
             pairs_out.append(_record(pair, argv=argv, action="historical_red"))
             continue
         expected = 0 if pair.claimed_exit is None else pair.claimed_exit
+        git_dir = None
         try:
-            if kind == "python-c":
-                spawn, env = python_spawn(argv, repo_root)
-            else:
-                spawn, env = git_spawn(argv, repo_root)
-        except ReplayDenied as exc:
-            unreplayable = True
-            pairs_out.append(
-                _record(
-                    pair,
-                    argv=argv,
-                    action="denied",
-                    reason=str(exc) or "unreplayable_command",
+            try:
+                if kind == "python-c":
+                    spawn, env = python_spawn(argv, repo_root)
+                else:
+                    git_dir = ReplayGitDir.open(repo_root)
+                    spawn, env = git_spawn(argv, repo_root, git_dir)
+            except ReplayDenied as exc:
+                unreplayable = True
+                pairs_out.append(
+                    _record(
+                        pair,
+                        argv=argv,
+                        action="denied",
+                        reason=str(exc) or "unreplayable_command",
+                    )
                 )
-            )
-            continue
-        try:
-            completed = _run(spawn, repo_root, env)
-        except subprocess.TimeoutExpired:
-            mismatch = True
+                continue
+            try:
+                completed = _run(spawn, repo_root, env)
+            except subprocess.TimeoutExpired:
+                mismatch = True
+                pairs_out.append(
+                    _record(
+                        pair,
+                        argv=spawn,
+                        action="mismatch",
+                        reason="timeout",
+                        expected_exit=expected,
+                        match=False,
+                    )
+                )
+                continue
+            combined = (completed.stdout or "") + (completed.stderr or "")
+            out_ok = True
+            if pair.output_body is not None and pair.output_body.strip():
+                out_ok = collapse_ws(pair.output_body) in collapse_ws(combined)
+            exit_ok = completed.returncode == expected
+            if not out_ok or not exit_ok:
+                mismatch = True
+                reason = "exit" if not exit_ok else "stdout"
+                pairs_out.append(
+                    _record(
+                        pair,
+                        argv=spawn,
+                        action="mismatch",
+                        reason=reason,
+                        exit_code=completed.returncode,
+                        expected_exit=expected,
+                        match=False,
+                    )
+                )
+                continue
             pairs_out.append(
                 _record(
                     pair,
                     argv=spawn,
-                    action="mismatch",
-                    reason="timeout",
-                    expected_exit=expected,
-                    match=False,
-                )
-            )
-            continue
-        combined = (completed.stdout or "") + (completed.stderr or "")
-        out_ok = True
-        if pair.output_body is not None and pair.output_body.strip():
-            out_ok = collapse_ws(pair.output_body) in collapse_ws(combined)
-        exit_ok = completed.returncode == expected
-        if not out_ok or not exit_ok:
-            mismatch = True
-            reason = "exit" if not exit_ok else "stdout"
-            pairs_out.append(
-                _record(
-                    pair,
-                    argv=spawn,
-                    action="mismatch",
-                    reason=reason,
+                    action="executed",
                     exit_code=completed.returncode,
                     expected_exit=expected,
-                    match=False,
+                    match=True,
                 )
             )
-            continue
-        pairs_out.append(
-            _record(
-                pair,
-                argv=spawn,
-                action="executed",
-                exit_code=completed.returncode,
-                expected_exit=expected,
-                match=True,
-            )
-        )
+        finally:
+            if git_dir is not None:
+                git_dir.close()
     return {
         "skipped": None,
         "pairs": pairs_out,

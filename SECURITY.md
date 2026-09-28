@@ -125,7 +125,7 @@ This does **not** cover attacks on infrastructure you do not own, spam, malware,
 
 Live `run.py` (no `--dry-run`) shells out to `grok -p`, which may send repository context to xAI under **your** account.
 
-`--replay` is a **local** subprocess of AST-allowlisted `python -c` and allowlisted `git`. It is off unless you pass the flag. Denied commands are not spawned. Python is the interpreter that launched the scorer, in isolated mode (`-I -S`), so a `sitecustomize.py` in the repo is not imported at startup. Git overrides repo hook, fsmonitor, and external-diff config for that command. Importing `harness_tmp` still runs that module as you. Do not replay evidence you have not read.
+`--replay` is a **local** subprocess of AST-allowlisted `python -c` and allowlisted `git`. It is off unless you pass the flag. Denied commands are not spawned. Python is the interpreter that launched the scorer, in isolated mode (`-I -S`), so a `sitecustomize.py` in the repo is not imported at startup. Git is pointed at a temporary git directory that shares objects but does not load the checkout's config, so a clean filter or a signature program configured there is not started. `git status` and `git diff` do not enter submodules. Importing `harness_tmp` still runs that module as you. Do not replay evidence you have not read.
 
 This harness does not ship API keys. Do not copy `~/.grok/auth.json`, `~/.xai_api_key`, SSH keys, or cloud credentials into the repo.
 

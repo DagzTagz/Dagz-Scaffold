@@ -58,6 +58,7 @@ Scoring a `--dry-run` folder exits **1** (`dry_run`). That is expected.
 - The task file scored for a git checkout must match `HEAD`. A symlink under `tasks/` is rejected.
 - Evidence that only prints the required strings, without calling the imported `harness_tmp` function, fails as `solution_not_called`. A pasted traceback does not count as that call.
 - Replay refuses oversized `**` and string-multiply literals in `python -c`.
+- Replay no longer loads the checkout's git config. Clean filters, included config, and `gpg.program` are not started. `git status` and `git diff` do not enter submodules. A symlinked `.git` is refused.
 
 - Rewrite `docs/scorer.md` around PASS vs BLOCK and human meanings of fail reasons; put replay and task JSON in a skippable appendix
 - Rewrite GitHub-facing docs in full sentences (README, getting-started, find-a-run, scorer, tasks, CONTRIBUTING) so a person can follow them without treating them as a machine checklist

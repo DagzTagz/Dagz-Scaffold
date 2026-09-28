@@ -525,6 +525,15 @@ class TaskContractLint(unittest.TestCase):
             self.assertIn("not under tasks/", str(ctx.exception))
 
 
+def _git(cwd: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", "-C", str(cwd), "-c", "commit.gpgsign=false", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 def _fence(command: str, output: str | None = None, prose: str = "") -> str:
     parts = [f"```\n{command}\n```\n"]
     if prose:
@@ -840,6 +849,187 @@ class SecurityRegressions(unittest.TestCase):
             result = replay.replay_evidence(evidence, repo_root=root)
         self.assertFalse(canary.exists(), result)
         self.assertEqual(result["pairs"][0]["action"], "executed", result)
+
+    def test_clean_filter_not_executed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "repo"
+            root.mkdir()
+            canary = base / "canary"
+            script = base / "clean.sh"
+            script.write_text(f"#!/bin/sh\nprintf x > {canary}\ncat\n", encoding="utf-8")
+            script.chmod(0o755)
+            _git(root, "init", "-q")
+            _git(root, "config", "user.email", "t@example.com")
+            _git(root, "config", "user.name", "t")
+            (root / "f").write_text("a\n", encoding="utf-8")
+            _git(root, "add", "f")
+            _git(root, "commit", "-q", "-m", "init")
+            included = base / "filters.ini"
+            included.write_text(
+                f"[filter \"evil\"]\n\tclean = {script}\n\tprocess = {script}\n\trequired = true\n",
+                encoding="utf-8",
+            )
+            _git(root, "config", "include.path", str(included))
+            _git(root, "config", "filter.evil.clean", str(script))
+            _git(root, "config", "filter.evil.process", str(script))
+            _git(root, "config", "filter.evil.required", "true")
+            (root / ".gitattributes").write_text("* filter=evil\n", encoding="utf-8")
+            info = root / ".git" / "info"
+            info.mkdir(exist_ok=True)
+            (info / "attributes").write_text("* filter=evil\n", encoding="utf-8")
+            (root / "f").write_text("b\n", encoding="utf-8")
+            evidence = _fence(
+                "git status --porcelain", prose="Process exit: 0\n"
+            ) + _fence("git diff --stat", prose="Process exit: 0\n")
+            result = replay.replay_evidence(evidence, repo_root=root)
+        self.assertFalse(canary.exists(), result)
+        self.assertEqual(
+            [pair["action"] for pair in result["pairs"]],
+            ["executed", "executed"],
+            result,
+        )
+
+    def test_submodule_clean_filter_not_executed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            parent = base / "parent"
+            child = base / "child"
+            parent.mkdir()
+            child.mkdir()
+            canary = base / "canary"
+            script = base / "clean.sh"
+            script.write_text(f"#!/bin/sh\nprintf x > {canary}\ncat\n", encoding="utf-8")
+            script.chmod(0o755)
+            _git(child, "init", "-q")
+            _git(child, "config", "user.email", "t@example.com")
+            _git(child, "config", "user.name", "t")
+            (child / "f").write_text("a\n", encoding="utf-8")
+            _git(child, "add", "f")
+            _git(child, "commit", "-q", "-m", "init")
+            _git(parent, "init", "-q")
+            _git(parent, "config", "user.email", "t@example.com")
+            _git(parent, "config", "user.name", "t")
+            (parent / "README").write_text("a\n", encoding="utf-8")
+            _git(parent, "add", "README")
+            _git(parent, "commit", "-q", "-m", "init")
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(parent),
+                    "-c",
+                    "commit.gpgsign=false",
+                    "-c",
+                    "protocol.file.allow=always",
+                    "submodule",
+                    "add",
+                    str(child),
+                    "sub",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            _git(parent / "sub", "config", "filter.evil.clean", str(script))
+            _git(parent / "sub", "config", "filter.evil.required", "true")
+            (parent / "sub" / ".gitattributes").write_text(
+                "* filter=evil\n", encoding="utf-8"
+            )
+            (parent / "sub" / "f").write_text("b\n", encoding="utf-8")
+            evidence = _fence("git status --porcelain", prose="Process exit: 0\n")
+            result = replay.replay_evidence(evidence, repo_root=parent)
+        self.assertFalse(canary.exists(), result)
+        self.assertEqual(result["pairs"][0]["action"], "executed", result)
+
+    def test_signed_log_does_not_run_gpg_program(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "repo"
+            root.mkdir()
+            canary = base / "canary"
+            script = base / "gpg.sh"
+            script.write_text(f"#!/bin/sh\nprintf x > {canary}\nexit 1\n", encoding="utf-8")
+            script.chmod(0o755)
+            _git(root, "init", "-q")
+            _git(root, "config", "user.email", "t@example.com")
+            _git(root, "config", "user.name", "t")
+            (root / "f").write_text("a\n", encoding="utf-8")
+            _git(root, "add", "f")
+            _git(root, "commit", "-q", "-m", "init")
+            raw = subprocess.check_output(
+                ["git", "-C", str(root), "cat-file", "-p", "HEAD"]
+            )
+            header, _, message = raw.partition(b"\n\n")
+            signature = b"\n".join(
+                [
+                    b"gpgsig -----BEGIN PGP SIGNATURE-----",
+                    b" ",
+                    b" dummy",
+                    b" -----END PGP SIGNATURE-----",
+                ]
+            )
+            forged = header + b"\n" + signature + b"\n\n" + message
+            sha = subprocess.check_output(
+                ["git", "-C", str(root), "hash-object", "-t", "commit", "-w", "--stdin"],
+                input=forged,
+            ).decode().strip()
+            _git(root, "update-ref", "HEAD", sha)
+            _git(root, "config", "log.showSignature", "true")
+            _git(root, "config", "gpg.program", str(script))
+            evidence = _fence("git show --oneline", prose="Process exit: 0\n")
+            result = replay.replay_evidence(evidence, repo_root=root)
+        self.assertFalse(canary.exists(), result)
+        self.assertEqual(result["pairs"][0]["action"], "executed", result)
+
+    def test_linked_worktree_rev_parse(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "repo"
+            wt = base / "wt"
+            root.mkdir()
+            _git(root, "init", "-q")
+            _git(root, "config", "user.email", "t@example.com")
+            _git(root, "config", "user.name", "t")
+            (root / "f").write_text("a\n", encoding="utf-8")
+            _git(root, "add", "f")
+            _git(root, "commit", "-q", "-m", "init")
+            _git(root, "worktree", "add", "--detach", str(wt), "HEAD")
+            evidence = _fence(
+                "git rev-parse --is-inside-work-tree",
+                "true",
+                "Process exit: 0\n",
+            )
+            result = replay.replay_evidence(evidence, repo_root=wt)
+        self.assertEqual(result["pairs"][0]["action"], "executed", result)
+
+    def test_symlinked_git_dir_is_not_used(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "repo"
+            root.mkdir()
+            canary = base / "canary"
+            script = base / "clean.sh"
+            script.write_text(f"#!/bin/sh\nprintf x > {canary}\ncat\n", encoding="utf-8")
+            script.chmod(0o755)
+            _git(root, "init", "-q")
+            _git(root, "config", "user.email", "t@example.com")
+            _git(root, "config", "user.name", "t")
+            (root / "f").write_text("a\n", encoding="utf-8")
+            _git(root, "add", "f")
+            _git(root, "commit", "-q", "-m", "init")
+            real_git = base / "real.git"
+            shutil.move(root / ".git", real_git)
+            (root / ".git").symlink_to(real_git, target_is_directory=True)
+            _git(root, "config", "filter.evil.clean", str(script))
+            _git(root, "config", "filter.evil.required", "true")
+            (root / ".gitattributes").write_text("* filter=evil\n", encoding="utf-8")
+            (root / "f").write_text("b\n", encoding="utf-8")
+            evidence = _fence("git status --porcelain", prose="Process exit: 0\n")
+            result = replay.replay_evidence(evidence, repo_root=root)
+        self.assertFalse(canary.exists(), result)
+        self.assertEqual(result["pairs"][0]["action"], "denied", result)
+        self.assertEqual(result["pairs"][0]["reason"], "git_dir")
 
     def test_run_id_cannot_escape_out_dir(self) -> None:
         import run as runmod
