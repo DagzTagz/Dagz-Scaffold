@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from enum import Enum
 from pathlib import Path
 from typing import NamedTuple
 
@@ -549,6 +550,9 @@ def replay_env(repo_root: Path) -> dict[str, str]:
     env["GIT_CONFIG_SYSTEM"] = os.devnull
     env["GIT_PAGER"] = "cat"
     env["GIT_TERMINAL_PROMPT"] = "0"
+    # Never discover a repository above the checkout. With no .git of its own,
+    # git would otherwise use an enclosing work tree and run its config.
+    env["GIT_CEILING_DIRECTORIES"] = str(repo_root.resolve().parent)
     env["PATH"] = _path_dirs(repo_root)
     for key in PROXY_ENV:
         env.pop(key, None)
@@ -658,21 +662,44 @@ def _common_git_dir(git_dir: Path) -> Path:
     return path
 
 
+class GitDirState(Enum):
+    """Lifecycle of a ReplayGitDir. Only ISOLATED may spawn git.
+
+    UNOPENED --open()--> ISOLATED  (.git found, temp git dir populated)
+    UNOPENED --open()--> NO_REPO   (no .git at repo_root: git replay is denied)
+    UNOPENED --open()--> raises ReplayDenied (temp dir already cleaned up)
+    ISOLATED | NO_REPO --close()--> CLOSED
+    """
+
+    UNOPENED = "unopened"
+    ISOLATED = "isolated"
+    NO_REPO = "no_repo"
+    CLOSED = "closed"
+
+
 class ReplayGitDir:
     """Temporary git dir sharing objects, with the checkout config left behind.
 
     Clean filters, signature programs, hooks, and includes live in the
     checkout's config. Replaying against that directory would run them.
+    A checkout with no .git of its own is NO_REPO, never "use whatever git
+    finds": upward discovery would load an enclosing repository's config.
     """
 
     def __init__(self, repo_root: Path) -> None:
         self.root = repo_root
+        self.state = GitDirState.UNOPENED
         self._tmp: tempfile.TemporaryDirectory[str] | None = None
         self.git_dir: Path | None = None
 
     def env_updates(self) -> dict[str, str]:
-        if self.git_dir is None:
-            return {}
+        """Env for an isolated git. Raises ReplayDenied in every other state."""
+        if self.state is GitDirState.NO_REPO:
+            raise ReplayDenied("git_no_repo")
+        if self.state is not GitDirState.ISOLATED or self.git_dir is None:
+            raise ReplayDenied(
+                "git_dir_closed" if self.state is GitDirState.CLOSED else "git_dir"
+            )
         return {
             "GIT_DIR": str(self.git_dir),
             "GIT_WORK_TREE": str(self.root),
@@ -682,20 +709,20 @@ class ReplayGitDir:
         if self._tmp is not None:
             self._tmp.cleanup()
             self._tmp = None
-            self.git_dir = None
+        self.git_dir = None
+        self.state = GitDirState.CLOSED
 
     @classmethod
     def open(cls, repo_root: Path) -> "ReplayGitDir":
         obj = cls(repo_root.resolve())
         try:
-            try:
-                obj._populate()
-            except OSError as exc:
-                raise ReplayDenied("git_dir") from exc
-        finally:
-            # _populate sets git_dir only after the temp dir is ready.
-            if obj.git_dir is None:
-                obj.close()
+            obj.state = obj._populate()
+        except OSError as exc:
+            obj.close()
+            raise ReplayDenied("git_dir") from exc
+        except BaseException:
+            obj.close()
+            raise
         return obj
 
     def _locate(self) -> tuple[Path, Path] | None:
@@ -712,10 +739,10 @@ class ReplayGitDir:
             raise ReplayDenied("git_dir")
         return git_dir, _common_git_dir(git_dir)
 
-    def _populate(self) -> None:
+    def _populate(self) -> GitDirState:
         located = self._locate()
         if located is None:
-            return
+            return GitDirState.NO_REPO
         git_dir, common = located
         self._tmp = tempfile.TemporaryDirectory(prefix="dagz-replay-git-")
         dest = Path(self._tmp.name) / "git"
@@ -754,6 +781,7 @@ class ReplayGitDir:
             b"\tshowSignature = false\n",
         )
         self.git_dir = dest
+        return GitDirState.ISOLATED
 
 
 def git_spawn(
@@ -772,9 +800,11 @@ def git_spawn(
         extra.append("--ignore-submodules=all")
     if sub in GIT_NO_EXTERNAL:
         extra.extend(["--no-ext-diff", "--no-textconv"])
+    # Denies (git_no_repo / git_dir_closed) unless the temp git dir is ready.
+    isolation = git_dir.env_updates()
     spawn = [str(trusted_git(repo_root)), *config, sub, *extra, *rest]
     env = replay_env(repo_root)
-    env.update(git_dir.env_updates())
+    env.update(isolation)
     return spawn, env
 
 
