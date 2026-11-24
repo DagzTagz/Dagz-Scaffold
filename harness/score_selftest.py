@@ -779,6 +779,51 @@ class ReplaySandbox(unittest.TestCase):
             self.assertTrue(result["replay"]["mismatch"])
 
 
+class VerdictRules(unittest.TestCase):
+    """One verdict/waivers/blockers/override rule set, shared by the gate (audit F8)."""
+
+    def test_shape_table(self) -> None:
+        shape = score.verdict_shape_error
+        waiver = [{"id": "W1", "reason": "r"}]
+        override = {"by": "a human", "reason": "r"}
+        ok = [
+            ({"verdict": "ACCEPT", "waivers": []}, True),
+            ({"verdict": "ACCEPT WITH WAIVERS", "waivers": waiver}, True),
+            ({"verdict": "REJECT", "waivers": []}, False),
+            ({"verdict": "REJECT", "waivers": [], "override": override}, False),
+        ]
+        for payload, blockers_empty in ok:
+            self.assertIsNone(shape(payload, blockers_empty=blockers_empty), payload)
+        bad = [
+            ({"verdict": "ACCEPT", "waivers": waiver}, True),
+            ({"verdict": "ACCEPT WITH WAIVERS", "waivers": []}, True),
+            ({"verdict": "ACCEPT", "waivers": []}, False),
+            ({"verdict": "REJECT", "waivers": []}, True),
+            ({"verdict": "ACCEPT", "waivers": [], "override": override}, True),
+            ({"verdict": "ACCEPT WITH WAIVERS", "waivers": waiver, "override": override}, True),
+        ]
+        for payload, blockers_empty in bad:
+            self.assertIsNotNone(shape(payload, blockers_empty=blockers_empty), payload)
+
+    def test_override_on_accept_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = _copy_sample(Path(tmp))
+            _patch_score(run_dir, override={"by": "someone", "reason": "why"})
+            with self.assertRaisesRegex(score.ScoreError, "only valid on a REJECT"):
+                score.score_run(run_dir, SCHEMA)
+
+    def test_ship_gate_uses_the_scorer_rule(self) -> None:
+        import ship_gate
+
+        self.assertIs(ship_gate.gate_passes, score.gate_passes)
+        reject = {"verdict": "REJECT", "override": {"by": 123, "reason": "r"}}
+        self.assertFalse(score.gate_passes(reject, honor_override=True))
+        good = {"verdict": "REJECT", "override": {"by": "a human", "reason": "r"}}
+        self.assertTrue(score.gate_passes(good, honor_override=True))
+        self.assertFalse(score.gate_passes(good, honor_override=False))
+        self.assertTrue(score.gate_passes({"verdict": "ACCEPT"}, honor_override=False))
+
+
 class LiveLoop(unittest.TestCase):
     """run_live gates every passing score and retries with the real reason (audit F3)."""
 

@@ -14,7 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from score import ScoreError, load_schema, score_run
+from score import ScoreError, gate_passes, load_schema, score_run
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = Path(__file__).resolve().parent / "schema" / "run.schema.json"
@@ -171,12 +171,8 @@ def gate_run(
     if not result.get("ok"):
         blocks.extend(result.get("fail_reasons") or ["score_not_ok"])
     score = result.get("score") or {}
-    if score.get("verdict") == "REJECT" and not honor_override:
+    if not gate_passes(score, honor_override=honor_override):
         blocks.append("REJECT")
-    elif score.get("verdict") == "REJECT":
-        ov = score.get("override") if isinstance(score.get("override"), dict) else {}
-        if not (str(ov.get("by") or "").strip() and str(ov.get("reason") or "").strip()):
-            blocks.append("REJECT")
     blocks.extend(run_folder_blocks(run_dir))
     if git_checks:
         runner = git_runner if git_runner is not None else default_git_runner
