@@ -6,6 +6,30 @@ Every claim below cites `repo/path:Lstart-Lend` with a permalink to the exact co
 
 ---
 
+## Remediation status
+
+Updated 2026-11-24. Each repository's disclosure is in its `docs/security/state-machine-audit-2026-11.md`. "Open" means the pull request has not merged yet.
+
+| Finding | Priority | Repo | Pull request | Status |
+|---|---|---|---|---|
+| F1 | High | Dagz-Scaffold | [Dagz-Scaffold#1](https://github.com/DagzTagz/Dagz-Scaffold/pull/1) | Fixed (merged) |
+| F2 | High | vesper-bind | [vesper-bind#1](https://github.com/DagzTagz/vesper-bind/pull/1) | Fixed (merged) |
+| F3 | Med | Dagz-Scaffold | [Dagz-Scaffold#2](https://github.com/DagzTagz/Dagz-Scaffold/pull/2) | Fix open |
+| F4 | Med | vesper-runtime | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) | Fix open |
+| F5 | Med | vesper-runtime | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) | Fix open |
+| F6 | Med | dagztagz-hypothesis-engine | [dagztagz-hypothesis-engine#4](https://github.com/DagzTagz/dagztagz-hypothesis-engine/pull/4) | Fix open |
+| F7 | Low | vesper-runtime | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) | Fix open |
+| F8 | Low | Dagz-Scaffold | [Dagz-Scaffold#2](https://github.com/DagzTagz/Dagz-Scaffold/pull/2) | Fix open |
+| F9 | Low | Dagz-Scaffold | [Dagz-Scaffold#2](https://github.com/DagzTagz/Dagz-Scaffold/pull/2) | Fix open |
+| F10 | Low | dagztagz-hypothesis-engine (vesper-bind reads it) | [dagztagz-hypothesis-engine#4](https://github.com/DagzTagz/dagztagz-hypothesis-engine/pull/4) | Fix open. The string values are unchanged, so vesper-bind needs no change. |
+| F11 | Low | vesper-runtime and vesper-bind | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) and [vesper-bind#2](https://github.com/DagzTagz/vesper-bind/pull/2) | Fix open. The lock and the compare-and-swap work in either merge order. vesper-bind still does not call vesper-runtime's API, because its rules forbid vendoring vesper-runtime. |
+| F12 | Low | vesper-runtime | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) | Fix open |
+| F13 | Low | vesper-bind | [vesper-bind#1](https://github.com/DagzTagz/vesper-bind/pull/1) | Fixed (merged) |
+
+The line numbers and permalinks below point to the audited commits. They describe the code as it was before these fixes.
+
+---
+
 ## 1. Scope
 
 | Repository | Commit audited | Language | Python LOC (src, excl. tests) | Status |

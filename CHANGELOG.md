@@ -15,6 +15,17 @@ Versions follow [Semantic Versioning](https://semver.org/) while pre-1.0 (`0.x` 
 
 - `score.py --replay`: a checkout with no `.git` of its own is now an explicit `NO_REPO` state, and git replay there is denied (`git_no_repo`) and counts as missing evidence. Before, git searched parent directories and could load an enclosing repository's config, including its clean filters. `replay_env` also sets `GIT_CEILING_DIRECTORIES`. See [docs/security/ADVISORY-2026-11-24-replay-enclosing-repo.md](docs/security/ADVISORY-2026-11-24-replay-enclosing-repo.md).
 - Added the November 2026 implicit-state-machine audit: [docs/audits/2026-11-state-machine-audit.md](docs/audits/2026-11-state-machine-audit.md).
+- The audit report now has a remediation status table. This repository's section of the disclosure is [docs/security/state-machine-audit-2026-11.md](docs/security/state-machine-audit-2026-11.md).
+
+### Fixed
+
+- **Live runs skipped the ship gate (audit F3).** `harness/run.py` returned success once `score.py` passed. It now also runs `ship_gate` (with `--git-checks`) and exits 0 only when both pass. The retry prompt says which check failed and why. `attempts` is recorded before scoring, so the scored `score.json` is the final file.
+- **Verdict rules in one place (audit F8).** `score.gate_passes` is the only override rule, and `ship_gate.py` uses it. Before, `ship_gate.py` had a looser copy.
+- **One fence lexer (audit F9).** `task_contract.lex_fences` is the only reader of Markdown fences in the harness. Nested and inline backticks no longer split evidence differently between checks.
+
+### Changed
+
+- **Breaking:** a `score.json` with an `override` on `ACCEPT` or `ACCEPT WITH WAIVERS` is now invalid. `override` is only meaningful on `REJECT`.
 
 ---
 
