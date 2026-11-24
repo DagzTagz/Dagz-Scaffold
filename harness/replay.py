@@ -22,11 +22,11 @@ from pathlib import Path
 from typing import NamedTuple
 
 from score import CMD_FIRST, RED_IN_FENCE, is_command_fence
+from task_contract import lex_fences
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 PROCESS_EXIT = re.compile(r"(?i)process exit(?:s| code)?:?\s*(\d+)")
-FENCE_SPAN = re.compile(r"^```([^\n]*)\n(.*?)```", re.M | re.S)
 
 GIT_SUB = frozenset(
     {"status", "diff", "log", "show", "check-ignore", "ls-files", "rev-parse"}
@@ -429,9 +429,7 @@ def classify_argv(argv: list[str], repo_root: Path | None = None) -> str:
 
 
 def _fence_spans(text: str) -> list[tuple[str, str, int, int]]:
-    return [
-        (m.group(1), m.group(2), m.start(), m.end()) for m in FENCE_SPAN.finditer(text)
-    ]
+    return [(f.info, f.body, f.start, f.end) for f in lex_fences(text)]
 
 
 def _next_command_start(

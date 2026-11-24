@@ -824,6 +824,36 @@ class VerdictRules(unittest.TestCase):
         self.assertTrue(score.gate_passes({"verdict": "ACCEPT"}, honor_override=False))
 
 
+class OneFenceLexer(unittest.TestCase):
+    """Scorer, contract parser and replay tokenize evidence the same way (audit F9)."""
+
+    NESTED = "````markdown\n```\ninner\n```\n````\nafter\n"
+
+    def test_nested_markdown_is_one_fence(self) -> None:
+        self.assertEqual(score.strip_markdown_fences(self.NESTED), "after\n")
+        self.assertEqual(task_contract.extract_fences(self.NESTED), [("markdown", "```\ninner\n```\n")])
+        self.assertEqual(len(replay._fence_spans(self.NESTED)), 1)
+
+    def test_inline_backticks_do_not_close_a_fence(self) -> None:
+        text = "```\nsay ``` mid-line\n```\n"
+        self.assertEqual(task_contract.extract_fences(text), [("", "say ``` mid-line\n")])
+
+    def test_closer_needs_as_many_ticks(self) -> None:
+        text = "````\npython3 -c 'x'\n```\nstill body\n````\n"
+        [(info, body)] = task_contract.extract_fences(text)
+        self.assertIn("still body", body)
+
+    def test_spans_cover_the_fence(self) -> None:
+        text = "intro\n```bash\npython3 x.py\n```\nprose\n"
+        [(info, body, start, end)] = replay._fence_spans(text)
+        self.assertEqual((info, body), ("bash", "python3 x.py\n"))
+        self.assertEqual(text[start:end], "```bash\npython3 x.py\n```")
+
+    def test_no_second_lexer(self) -> None:
+        self.assertFalse(hasattr(replay, "FENCE_SPAN"))
+        self.assertFalse(hasattr(score, "_parse_fence"))
+
+
 class LiveLoop(unittest.TestCase):
     """run_live gates every passing score and retries with the real reason (audit F3)."""
 
