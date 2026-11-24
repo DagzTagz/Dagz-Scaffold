@@ -2,29 +2,29 @@
 
 An audit of the public Python code under [github.com/DagzTagz](https://github.com/DagzTagz). It looks for lifecycles and protocols that are encoded *implicitly* (booleans, sentinel `None`s, status strings, file presence, write ordering) and should be made explicit state machines or tagged unions.
 
-Every claim below cites `repo/path:Lstart-Lend` with a permalink to the exact commit audited. Findings marked **Reproduced** were confirmed by executing the code at that commit (scripts summarized inline). The audit itself changed nothing upstream. Fixes for the two High findings (F1, F2 with F13) followed on 2026-11-24 in separate pull requests; see the advisories in [`docs/security/`](../security/) here and in [vesper-bind](https://github.com/DagzTagz/vesper-bind/tree/fix/bind-scaffold-run-state/docs/security).
+Every claim below cites `repo/path:Lstart-Lend` with a permalink to the exact commit audited. Findings marked **Reproduced** were confirmed by executing the code at that commit (scripts summarized inline). The audit itself changed nothing upstream. Fixes for all 13 findings followed on 2026-11-24 in separate pull requests (see Remediation status below); see the advisories in [`docs/security/`](../security/) here and in [vesper-bind](https://github.com/DagzTagz/vesper-bind/tree/main/docs/security).
 
 ---
 
 ## Remediation status
 
-Updated 2026-11-24. Each repository's disclosure is in its `docs/security/state-machine-audit-2026-11.md`. "Open" means the pull request has not merged yet.
+Updated 2026-11-24. All 13 findings are fixed and merged on `main` in each repository, with merge commits. Each repository's disclosure is in its `docs/security/state-machine-audit-2026-11.md`.
 
-| Finding | Priority | Repo | Pull request | Status |
-|---|---|---|---|---|
-| F1 | High | Dagz-Scaffold | [Dagz-Scaffold#1](https://github.com/DagzTagz/Dagz-Scaffold/pull/1) | Fixed (merged) |
-| F2 | High | vesper-bind | [vesper-bind#1](https://github.com/DagzTagz/vesper-bind/pull/1) | Fixed (merged) |
-| F3 | Med | Dagz-Scaffold | [Dagz-Scaffold#2](https://github.com/DagzTagz/Dagz-Scaffold/pull/2) | Fix open |
-| F4 | Med | vesper-runtime | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) | Fix open |
-| F5 | Med | vesper-runtime | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) | Fix open |
-| F6 | Med | dagztagz-hypothesis-engine | [dagztagz-hypothesis-engine#4](https://github.com/DagzTagz/dagztagz-hypothesis-engine/pull/4) | Fix open |
-| F7 | Low | vesper-runtime | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) | Fix open |
-| F8 | Low | Dagz-Scaffold | [Dagz-Scaffold#2](https://github.com/DagzTagz/Dagz-Scaffold/pull/2) | Fix open |
-| F9 | Low | Dagz-Scaffold | [Dagz-Scaffold#2](https://github.com/DagzTagz/Dagz-Scaffold/pull/2) | Fix open |
-| F10 | Low | dagztagz-hypothesis-engine (vesper-bind reads it) | [dagztagz-hypothesis-engine#4](https://github.com/DagzTagz/dagztagz-hypothesis-engine/pull/4) | Fix open. The string values are unchanged, so vesper-bind needs no change. |
-| F11 | Low | vesper-runtime and vesper-bind | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) and [vesper-bind#2](https://github.com/DagzTagz/vesper-bind/pull/2) | Fix open. The lock and the compare-and-swap work in either merge order. vesper-bind still does not call vesper-runtime's API, because its rules forbid vendoring vesper-runtime. |
-| F12 | Low | vesper-runtime | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) | Fix open |
-| F13 | Low | vesper-bind | [vesper-bind#1](https://github.com/DagzTagz/vesper-bind/pull/1) | Fixed (merged) |
+| Finding | Priority | Repo | Pull request | Merge commit | Status |
+|---|---|---|---|---|---|
+| F1 | High | Dagz-Scaffold | [Dagz-Scaffold#1](https://github.com/DagzTagz/Dagz-Scaffold/pull/1) | [`4f09170`](https://github.com/DagzTagz/Dagz-Scaffold/commit/4f091704b708918de37594977cfb1ea73c282785) | Merged. |
+| F2 | High | vesper-bind | [vesper-bind#1](https://github.com/DagzTagz/vesper-bind/pull/1) | [`c9b4e82`](https://github.com/DagzTagz/vesper-bind/commit/c9b4e82dcdf2ce8d323f4404017180eca487f771) | Merged. |
+| F3 | Med | Dagz-Scaffold | [Dagz-Scaffold#2](https://github.com/DagzTagz/Dagz-Scaffold/pull/2) | [`2574c1e`](https://github.com/DagzTagz/Dagz-Scaffold/commit/2574c1e40d9b0f17130b0169ddf6f49e7610a864) | Merged. |
+| F4 | Med | vesper-runtime | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) | [`e241040`](https://github.com/DagzTagz/vesper-runtime/commit/e24104020be997b48ed12db9fe1fecb52663ae90) | Merged. |
+| F5 | Med | vesper-runtime | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) | [`e241040`](https://github.com/DagzTagz/vesper-runtime/commit/e24104020be997b48ed12db9fe1fecb52663ae90) | Merged. |
+| F6 | Med | dagztagz-hypothesis-engine | [dagztagz-hypothesis-engine#4](https://github.com/DagzTagz/dagztagz-hypothesis-engine/pull/4) | [`3a3f071`](https://github.com/DagzTagz/dagztagz-hypothesis-engine/commit/3a3f07148f7fd88aafbe8b421af0ead43701e519) | Merged. |
+| F7 | Low | vesper-runtime | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) | [`e241040`](https://github.com/DagzTagz/vesper-runtime/commit/e24104020be997b48ed12db9fe1fecb52663ae90) | Merged. |
+| F8 | Low | Dagz-Scaffold | [Dagz-Scaffold#2](https://github.com/DagzTagz/Dagz-Scaffold/pull/2) | [`2574c1e`](https://github.com/DagzTagz/Dagz-Scaffold/commit/2574c1e40d9b0f17130b0169ddf6f49e7610a864) | Merged. |
+| F9 | Low | Dagz-Scaffold | [Dagz-Scaffold#2](https://github.com/DagzTagz/Dagz-Scaffold/pull/2) | [`2574c1e`](https://github.com/DagzTagz/Dagz-Scaffold/commit/2574c1e40d9b0f17130b0169ddf6f49e7610a864) | Merged. |
+| F10 | Low | dagztagz-hypothesis-engine (vesper-bind reads it) | [dagztagz-hypothesis-engine#4](https://github.com/DagzTagz/dagztagz-hypothesis-engine/pull/4) | [`3a3f071`](https://github.com/DagzTagz/dagztagz-hypothesis-engine/commit/3a3f07148f7fd88aafbe8b421af0ead43701e519) | Merged. The string values are unchanged, so vesper-bind needed no change. |
+| F11 | Low | vesper-runtime and vesper-bind | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) and [vesper-bind#2](https://github.com/DagzTagz/vesper-bind/pull/2) | [`e241040`](https://github.com/DagzTagz/vesper-runtime/commit/e24104020be997b48ed12db9fe1fecb52663ae90) and [`f741c36`](https://github.com/DagzTagz/vesper-bind/commit/f741c3648885a8812ea093ff0c087edca4f8fdc6) | Merged. vesper-bind does not call vesper-runtime's API, because its rules forbid vendoring vesper-runtime. The two share the documented `.lock` and note contract instead. |
+| F12 | Low | vesper-runtime | [vesper-runtime#1](https://github.com/DagzTagz/vesper-runtime/pull/1) | [`e241040`](https://github.com/DagzTagz/vesper-runtime/commit/e24104020be997b48ed12db9fe1fecb52663ae90) | Merged. |
+| F13 | Low | vesper-bind | [vesper-bind#1](https://github.com/DagzTagz/vesper-bind/pull/1) | [`c9b4e82`](https://github.com/DagzTagz/vesper-bind/commit/c9b4e82dcdf2ce8d323f4404017180eca487f771) | Merged. |
 
 The line numbers and permalinks below point to the audited commits. They describe the code as it was before these fixes.
 
