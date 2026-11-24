@@ -65,6 +65,6 @@ is used or the critic verdict is `ACCEPT` / `ACCEPT WITH WAIVERS`.
 
 - Python 3.11+, **stdlib only** for harness code. No surprise pip packages.
 - `harness/run.py --dry-run` must not call the network or the model.
-- `harness/score.py` reads local files. `--replay` is a local subprocess, no network, and stays off unless a human passes it. Python runs isolated (`-I -S`) from the scorer's interpreter. Git runs from a binary outside the checkout, against a temporary git dir that does not load that checkout's config. `git status` and `git diff` do not enter submodules. A symlinked `.git` is refused. Importing `harness_tmp` still runs that module.
+- `harness/score.py` reads local files. `--replay` is a local subprocess, no network, and stays off unless a human passes it. Python runs isolated (`-I -S`) from the scorer's interpreter. Git runs from a binary outside the checkout, against a temporary git dir that does not load that checkout's config. With no `.git` in the checkout, git replay is refused (`git_no_repo`); it never falls through to an enclosing repo. `git status` and `git diff` do not enter submodules. A symlinked `.git` is refused. Importing `harness_tmp` still runs that module.
 - Ship-gate does not replay. It does read the run folder for secret-shaped text and symlink artifacts.
 - Do not commit `runs/`, `.env`, keys, or Grok session state.
