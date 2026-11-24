@@ -23,9 +23,81 @@ class TaskContract(NamedTuple):
     red_then_green: bool
 
 
+class Fence(NamedTuple):
+    """One top-level backtick fence. start/end are offsets into the text:
+    start is the opener line's first character, end is just past the
+    closer's backticks (before its newline)."""
+
+    info: str
+    body: str
+    start: int
+    end: int
+    ticks: int
+
+
+_FENCE_LINE = re.compile(r"^( {0,3})(`{3,})[ \t]*(.*)$")
+
+
+def parse_fence_line(line: str) -> tuple[int, str] | None:
+    """Return (tick_count, info) for a backtick fence line, else None."""
+    m = _FENCE_LINE.match(line.rstrip("\r\n"))
+    if m is None or "`" in m.group(3):
+        return None
+    return len(m.group(2)), m.group(3).strip()
+
+
+def _is_closer(line: str, ticks: int) -> bool:
+    fence = parse_fence_line(line)
+    return fence is not None and fence[1] == "" and fence[0] >= ticks
+
+
+def lex_fences(text: str) -> list[Fence]:
+    """The one Markdown fence lexer the harness uses (audit F9).
+
+    Line mode, two states:
+    - OUTSIDE: a line of 3+ backticks (up to 3 spaces of indent) whose info
+      has no backtick opens a fence.
+    - INSIDE(ticks): a line of >= ticks backticks with no info closes it.
+      Backticks anywhere else, including mid-line, are body text.
+
+    A ``markdown`` fence quotes a document, so a fence with an info string
+    inside it is skipped as a unit and cannot close the outer one. A fence
+    that never closes is not a fence, and lexing stops there.
+    """
+    lines = text.splitlines(keepends=True)
+    offsets = [0]
+    for line in lines:
+        offsets.append(offsets[-1] + len(line))
+    fences: list[Fence] = []
+    i = 0
+    while i < len(lines):
+        opener = parse_fence_line(lines[i])
+        if opener is None:
+            i += 1
+            continue
+        ticks, info = opener
+        quoted = info.split(" ", 1)[0] == "markdown"
+        j = i + 1
+        while j < len(lines) and not _is_closer(lines[j], ticks):
+            inner = parse_fence_line(lines[j]) if quoted else None
+            j += 1
+            if inner is not None and inner[1] != "":
+                while j < len(lines) and not _is_closer(lines[j], inner[0]):
+                    j += 1
+                j += 1
+        if j >= len(lines):
+            break
+        closer = lines[j]
+        end = offsets[j] + len(closer.rstrip("\r\n"))
+        body = "".join(lines[i + 1 : j])
+        fences.append(Fence(info, body, offsets[i], end, ticks))
+        i = j + 1
+    return fences
+
+
 def extract_fences(text: str) -> list[tuple[str, str]]:
-    """List of (info_string, body) in order. Info is the token after ```."""
-    return re.findall(r"^```([^\n]*)\n(.*?)```", text, flags=re.M | re.S)
+    """List of (info_string, body) in order, from lex_fences."""
+    return [(f.info, f.body) for f in lex_fences(text)]
 
 
 def fold_quotes(s: str) -> str:

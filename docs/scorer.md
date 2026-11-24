@@ -46,7 +46,9 @@ Imagine a take-home exam. The inspector does not re-grade the math from scratch.
 - There is a critic file with a clear vote: accept, accept with named exceptions, or reject.
 - The score file’s vote matches the critic. You cannot have the critic say reject and the score file say accept.
 - If the critic listed blockers, the vote has to be reject. A note in `score.json` does not overrule that. A person can pass `--honor-override` on the scorer or the ship-gate, and only then do `override.by` and `override.reason` count.
+- `override` belongs only on a `REJECT`. A `score.json` with `ACCEPT` or `ACCEPT WITH WAIVERS` and an `override` is invalid. `ACCEPT` cannot carry waivers. `ACCEPT WITH WAIVERS` needs at least one. The scorer and the ship-gate use the same rule (`score.gate_passes`) to decide whether a `REJECT` is overruled.
 - If the task said “you must show `273.15`” or “you must show a failing test then a passing one,” that proof has to appear in a command fence or in the output fence paired with it, not as a sentence in the margin. The command also has to call the solution. Printing the string by itself is not enough.
+- One fence reader (`task_contract.lex_fences`) splits `evidence.md` and task files for every check: quit-early, command counting, pairing, replay and the scorer contract. A fence opens on a line of three or more backticks and closes on a line with at least as many backticks and nothing else. Backticks in the middle of a line are text. A ` ```markdown ` fence can quote code fences inside it. A fence that never closes does not count.
 
 If the agent wrote “this should work” or “this was too hard” in the evidence, the inspector treats that as quitting, even if the score file claims otherwise. The plan is allowed to say “do not quit because it is too hard.” That is a warning to the agent, not a confession.
 

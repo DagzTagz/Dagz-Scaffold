@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import re
 import shutil
@@ -776,6 +777,168 @@ class ReplaySandbox(unittest.TestCase):
             self.assertTrue(result["score"]["missing_evidence"])
             self.assertEqual(result["score"]["waivers"], before["waivers"])
             self.assertTrue(result["replay"]["mismatch"])
+
+
+class VerdictRules(unittest.TestCase):
+    """One verdict/waivers/blockers/override rule set, shared by the gate (audit F8)."""
+
+    def test_shape_table(self) -> None:
+        shape = score.verdict_shape_error
+        waiver = [{"id": "W1", "reason": "r"}]
+        override = {"by": "a human", "reason": "r"}
+        ok = [
+            ({"verdict": "ACCEPT", "waivers": []}, True),
+            ({"verdict": "ACCEPT WITH WAIVERS", "waivers": waiver}, True),
+            ({"verdict": "REJECT", "waivers": []}, False),
+            ({"verdict": "REJECT", "waivers": [], "override": override}, False),
+        ]
+        for payload, blockers_empty in ok:
+            self.assertIsNone(shape(payload, blockers_empty=blockers_empty), payload)
+        bad = [
+            ({"verdict": "ACCEPT", "waivers": waiver}, True),
+            ({"verdict": "ACCEPT WITH WAIVERS", "waivers": []}, True),
+            ({"verdict": "ACCEPT", "waivers": []}, False),
+            ({"verdict": "REJECT", "waivers": []}, True),
+            ({"verdict": "ACCEPT", "waivers": [], "override": override}, True),
+            ({"verdict": "ACCEPT WITH WAIVERS", "waivers": waiver, "override": override}, True),
+        ]
+        for payload, blockers_empty in bad:
+            self.assertIsNotNone(shape(payload, blockers_empty=blockers_empty), payload)
+
+    def test_override_on_accept_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = _copy_sample(Path(tmp))
+            _patch_score(run_dir, override={"by": "someone", "reason": "why"})
+            with self.assertRaisesRegex(score.ScoreError, "only valid on a REJECT"):
+                score.score_run(run_dir, SCHEMA)
+
+    def test_ship_gate_uses_the_scorer_rule(self) -> None:
+        import ship_gate
+
+        self.assertIs(ship_gate.gate_passes, score.gate_passes)
+        reject = {"verdict": "REJECT", "override": {"by": 123, "reason": "r"}}
+        self.assertFalse(score.gate_passes(reject, honor_override=True))
+        good = {"verdict": "REJECT", "override": {"by": "a human", "reason": "r"}}
+        self.assertTrue(score.gate_passes(good, honor_override=True))
+        self.assertFalse(score.gate_passes(good, honor_override=False))
+        self.assertTrue(score.gate_passes({"verdict": "ACCEPT"}, honor_override=False))
+
+
+class OneFenceLexer(unittest.TestCase):
+    """Scorer, contract parser and replay tokenize evidence the same way (audit F9)."""
+
+    NESTED = "````markdown\n```\ninner\n```\n````\nafter\n"
+
+    def test_nested_markdown_is_one_fence(self) -> None:
+        self.assertEqual(score.strip_markdown_fences(self.NESTED), "after\n")
+        self.assertEqual(task_contract.extract_fences(self.NESTED), [("markdown", "```\ninner\n```\n")])
+        self.assertEqual(len(replay._fence_spans(self.NESTED)), 1)
+
+    def test_inline_backticks_do_not_close_a_fence(self) -> None:
+        text = "```\nsay ``` mid-line\n```\n"
+        self.assertEqual(task_contract.extract_fences(text), [("", "say ``` mid-line\n")])
+
+    def test_closer_needs_as_many_ticks(self) -> None:
+        text = "````\npython3 -c 'x'\n```\nstill body\n````\n"
+        [(info, body)] = task_contract.extract_fences(text)
+        self.assertIn("still body", body)
+
+    def test_spans_cover_the_fence(self) -> None:
+        text = "intro\n```bash\npython3 x.py\n```\nprose\n"
+        [(info, body, start, end)] = replay._fence_spans(text)
+        self.assertEqual((info, body), ("bash", "python3 x.py\n"))
+        self.assertEqual(text[start:end], "```bash\npython3 x.py\n```")
+
+    def test_no_second_lexer(self) -> None:
+        self.assertFalse(hasattr(replay, "FENCE_SPAN"))
+        self.assertFalse(hasattr(score, "_parse_fence"))
+
+
+class LiveLoop(unittest.TestCase):
+    """run_live gates every passing score and retries with the real reason (audit F3)."""
+
+    def test_transition_table(self) -> None:
+        import run as runmod
+
+        Step, step = runmod.Step, runmod.next_step
+        self.assertIs(step(1, 2, True, None), Step.GATE)
+        self.assertIs(step(1, 2, True, []), Step.DONE)
+        self.assertIs(step(2, 2, True, []), Step.DONE)
+        self.assertIs(step(1, 2, True, ["REJECT"]), Step.RETRY)
+        self.assertIs(step(2, 2, True, ["REJECT"]), Step.EXHAUSTED)
+        self.assertIs(step(1, 2, False, None), Step.RETRY)
+        self.assertIs(step(2, 2, False, None), Step.EXHAUSTED)
+
+    def _live(self, tmp: Path, *, extra_file: str | None = None):
+        """Drive run_live with a fake grok that leaves the sample run behind."""
+        import run as runmod
+        import ship_gate
+
+        run_dir = tmp / "live"
+        prompts: list[str] = []
+        scored_bytes: list[bytes] = []
+
+        real_run = subprocess.run
+
+        def fake_grok(cmd, *args, **kwargs):
+            if cmd[0] != "grok":
+                return real_run(cmd, *args, **kwargs)
+            prompts.append(cmd[2])
+            if not (run_dir / "score.json").exists():
+                shutil.copytree(SAMPLE, run_dir, dirs_exist_ok=True)
+                if extra_file:
+                    (run_dir / extra_file).write_text("x\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0)
+
+        real_score = runmod._score_dir
+
+        def spy_score(path: Path) -> dict:
+            scored_bytes.append((path / "score.json").read_bytes())
+            return real_score(path)
+
+        with (
+            mock.patch.object(runmod, "grok_available", return_value=True),
+            mock.patch.object(runmod.subprocess, "run", side_effect=fake_grok),
+            mock.patch.object(runmod, "_score_dir", side_effect=spy_score),
+            mock.patch.object(ship_gate, "default_git_runner", return_value=""),
+            mock.patch("sys.stderr", new_callable=io.StringIO),
+        ):
+            code = runmod.run_live(tmp / "task.md", run_dir, "task text")
+        return code, run_dir, prompts, scored_bytes
+
+    def test_gate_block_is_not_success(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            code, _, prompts, _ = self._live(Path(raw), extra_file=".env")
+        self.assertEqual(code, 1)
+        self.assertEqual(len(prompts), 2)
+        self.assertIn("ship_gate.py blocked the run", prompts[1])
+        self.assertIn(".env", prompts[1])
+        self.assertNotIn("REJECT returns to the builder", prompts[1])
+
+    def test_scored_bytes_are_final(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            code, run_dir, prompts, scored = self._live(Path(raw))
+            final = (run_dir / "score.json").read_bytes()
+        self.assertEqual(code, 0)
+        self.assertEqual(len(prompts), 1)
+        self.assertEqual(scored, [final])
+        self.assertEqual(json.loads(final)["attempts"], 1)
+
+    def test_retry_prompt_names_the_score_reasons(self) -> None:
+        import run as runmod
+
+        with tempfile.TemporaryDirectory() as raw:
+            text = runmod.retry_prompt(
+                Path(raw) / "t.md",
+                Path(raw),
+                "task",
+                stage="score",
+                reasons=("quit_early",),
+                verdict="ACCEPT",
+            )
+        self.assertIn("score.py did not pass", text)
+        self.assertIn("- quit_early", text)
+        self.assertNotIn("REJECT returns to the builder", text)
 
 
 class SecurityRegressions(unittest.TestCase):

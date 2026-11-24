@@ -16,6 +16,7 @@ from task_contract import (
     ContractError,
     TaskContract,
     extract_fences,
+    lex_fences,
     load_task_contract,
     token_hits,
 )
@@ -162,53 +163,21 @@ def scan_quit_early(text: str) -> list[str]:
     return sorted(set(hits))
 
 
-def _parse_fence(line: str) -> tuple[int, str] | None:
-    """Return (tick_count, info) for a backtick fence line, else None."""
-    m = re.match(r"^( {0,3})(`{3,})[ \t]*(.*)$", line.rstrip("\r\n"))
-    if m is None or "`" in m.group(3):
-        return None
-    return len(m.group(2)), m.group(3).strip()
-
-
-def _skip_fence_body(lines: list[str], i: int, n_ticks: int) -> int:
-    """Advance past a fence body to its closer (empty info, ≥ n_ticks)."""
-    while i < len(lines):
-        closer = _parse_fence(lines[i])
-        i += 1
-        if closer is not None and closer[1] == "" and closer[0] >= n_ticks:
-            break
-    return i
-
-
 def strip_markdown_fences(text: str) -> str:
     """Drop fenced markdown task excerpts before scanning evidence."""
-    lines = text.splitlines(keepends=True)
     out: list[str] = []
-    i = 0
-    while i < len(lines):
-        fence = _parse_fence(lines[i])
-        info0 = "" if fence is None else fence[1].split(" ", 1)[0]
-        if fence is None or info0 != "markdown":
-            out.append(lines[i])
-            i += 1
+    pos = 0
+    for fence in lex_fences(text):
+        if fence.info.split(" ", 1)[0] != "markdown":
             continue
-        n_open = fence[0]
-        start = i
-        i += 1
-        closed = False
-        while i < len(lines):
-            inner = _parse_fence(lines[i])
-            if inner is not None and inner[1] == "" and inner[0] >= n_open:
-                i += 1
-                closed = True
-                break
-            if inner is not None and inner[1] != "":
-                i = _skip_fence_body(lines, i + 1, inner[0])
-                continue
-            i += 1
-        if not closed:
-            out.extend(lines[start:])
-            break
+        out.append(text[pos : fence.start])
+        pos = fence.end
+        # The closer's own newline goes with the excerpt.
+        if text.startswith("\r\n", pos):
+            pos += 2
+        elif text.startswith("\n", pos):
+            pos += 1
+    out.append(text[pos:])
     return "".join(out)
 
 
@@ -263,15 +232,40 @@ def count_command_blocks(evidence: str) -> int:
     return sum(1 for _info, body in extract_fences(evidence) if is_command_fence(body))
 
 
-def _human_override(payload: dict, *, honor: bool) -> bool:
-    """True only when the human passed --honor-override and filled both fields.
+def verdict_shape_error(payload: dict, *, blockers_empty: bool) -> str | None:
+    """The one place that says which verdict/waivers/blockers/override mixes exist.
 
-    The run folder is written by the agent. Strings in score.json are not
-    evidence that a person agreed.
+    ACCEPT: no waivers, no BLOCKERS, no override.
+    ACCEPT WITH WAIVERS: at least one waiver, no BLOCKERS, no override.
+    REJECT: at least one BLOCKER; override is optional.
     """
-    if not honor:
+    verdict = payload["verdict"]
+    if verdict == "ACCEPT WITH WAIVERS" and not payload["waivers"]:
+        return "ACCEPT WITH WAIVERS requires explicit waivers"
+    if verdict == "ACCEPT" and payload["waivers"]:
+        return "ACCEPT cannot carry waivers; use ACCEPT WITH WAIVERS"
+    if verdict != "REJECT" and not blockers_empty:
+        return "non-REJECT verdict with BLOCKERS present"
+    if verdict == "REJECT" and blockers_empty:
+        return "REJECT requires at least one BLOCKER"
+    if verdict != "REJECT" and "override" in payload:
+        return "override is only valid on a REJECT verdict"
+    return None
+
+
+def gate_passes(score: dict, *, honor_override: bool) -> bool:
+    """Whether the verdict lets the run through. score.py and ship_gate.py share it.
+
+    ACCEPT and ACCEPT WITH WAIVERS pass. REJECT passes only when the human
+    passed --honor-override and score.json names a non-blank override.by and
+    override.reason. The run folder is written by the agent, so strings in
+    score.json alone are not evidence that a person agreed.
+    """
+    if score.get("verdict") != "REJECT":
+        return True
+    if not honor_override:
         return False
-    ov = payload.get("override")
+    ov = score.get("override")
     if not isinstance(ov, dict):
         return False
     by = ov.get("by")
@@ -441,21 +435,16 @@ def score_run(
             f"verdict mismatch: critic.md={parsed_verdict!r} score.json={payload['verdict']!r}"
         )
 
-    if payload["verdict"] == "ACCEPT WITH WAIVERS" and not payload["waivers"]:
-        raise ScoreError("ACCEPT WITH WAIVERS requires explicit waivers")
-    if payload["verdict"] == "ACCEPT" and payload["waivers"]:
-        raise ScoreError("ACCEPT cannot carry waivers; use ACCEPT WITH WAIVERS")
-
     artifacts = payload["artifacts"]
     for name in REQUIRED_FILES:
         if artifacts.get(name) is not True:
             raise ScoreError(f"artifacts.{name} must be true")
 
-    blockers_empty = section_is_empty(sections["BLOCKERS"])
-    if payload["verdict"] != "REJECT" and not blockers_empty:
-        raise ScoreError("non-REJECT verdict with BLOCKERS present")
-    if payload["verdict"] == "REJECT" and blockers_empty:
-        raise ScoreError("REJECT requires at least one BLOCKER")
+    shape_error = verdict_shape_error(
+        payload, blockers_empty=section_is_empty(sections["BLOCKERS"])
+    )
+    if shape_error:
+        raise ScoreError(shape_error)
 
     missing_ev_section = not section_is_empty(sections["MISSING EVIDENCE"])
     commands_ok = evidence_has_commands(evidence)
@@ -491,9 +480,7 @@ def score_run(
     fail_reasons: list[str] = []
     if payload["quit_early"]:
         fail_reasons.append("quit_early")
-    if payload["verdict"] == "REJECT" and not _human_override(
-        payload, honor=honor_override
-    ):
+    if not gate_passes(payload, honor_override=honor_override):
         fail_reasons.append("REJECT")
     if payload["missing_evidence"]:
         fail_reasons.append("missing_evidence")

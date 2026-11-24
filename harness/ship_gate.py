@@ -14,7 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from score import ScoreError, load_schema, score_run
+from score import ScoreError, gate_passes, load_schema, score_run
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = Path(__file__).resolve().parent / "schema" / "run.schema.json"
@@ -126,9 +126,37 @@ def main(argv: list[str] | None = None, *, git_runner=None) -> int:
         print(f"error: not a directory: {run_dir}", file=sys.stderr)
         return 2
 
+    blocks, result = gate_run(
+        run_dir,
+        honor_override=args.honor_override,
+        git_checks=args.git_checks,
+        git_runner=git_runner,
+    )
+    if blocks:
+        print("SHIP-GATE: BLOCK")
+        for b in blocks:
+            print(f"- {b}")
+        return 1
+    print("SHIP-GATE: PASS")
+    print(result["summary"])
+    return 0
+
+
+def gate_run(
+    run_dir: Path,
+    *,
+    honor_override: bool = False,
+    git_checks: bool = False,
+    git_runner=None,
+) -> tuple[list[str], dict]:
+    """Return (blocks, score result). An empty block list means PASS.
+
+    harness/run.py calls this too, so the live loop and the CLI gate a run
+    the same way.
+    """
     try:
         result = score_run(
-            run_dir, load_schema(SCHEMA), honor_override=args.honor_override
+            run_dir, load_schema(SCHEMA), honor_override=honor_override
         )
     except ScoreError as exc:
         result = {
@@ -143,25 +171,13 @@ def main(argv: list[str] | None = None, *, git_runner=None) -> int:
     if not result.get("ok"):
         blocks.extend(result.get("fail_reasons") or ["score_not_ok"])
     score = result.get("score") or {}
-    if score.get("verdict") == "REJECT" and not args.honor_override:
+    if not gate_passes(score, honor_override=honor_override):
         blocks.append("REJECT")
-    elif score.get("verdict") == "REJECT":
-        ov = score.get("override") if isinstance(score.get("override"), dict) else {}
-        if not (str(ov.get("by") or "").strip() and str(ov.get("reason") or "").strip()):
-            blocks.append("REJECT")
     blocks.extend(run_folder_blocks(run_dir))
-    if args.git_checks:
+    if git_checks:
         runner = git_runner if git_runner is not None else default_git_runner
         blocks.extend(git_index_blocks(REPO_ROOT, runner=runner))
-    blocks = list(dict.fromkeys(blocks))
-    if blocks:
-        print("SHIP-GATE: BLOCK")
-        for b in blocks:
-            print(f"- {b}")
-        return 1
-    print("SHIP-GATE: PASS")
-    print(result["summary"])
-    return 0
+    return list(dict.fromkeys(blocks)), result
 
 
 if __name__ == "__main__":

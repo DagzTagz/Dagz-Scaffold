@@ -107,7 +107,7 @@ Use **your** folder name, not the example, and not the letters `<id>`.
 
 ## 5. Headless live run (no interactive Grok UI)
 
-Same cost and privacy as section 4. This calls `grok -p` for you, scores the folder, and will retry **once** if the first sitting fails (two Grok calls maximum).
+Same cost and privacy as section 4. This calls `grok -p` for you, then scores the folder. If the score passes, it runs the ship gate (`ship_gate.py --git-checks`). It exits 0 only when both pass. If either fails, it retries **once** and tells Grok which check failed and why. That is two Grok calls at most.
 
 ```bash
 python3 harness/run.py tasks/002-quit-early.md
