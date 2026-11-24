@@ -5,7 +5,7 @@
 | **Component** | `harness/replay.py` (`ReplayGitDir`, `git_spawn`), used by `harness/score.py --replay` |
 | **Audit priority** | High (see [audit rubric](../audits/2026-11-state-machine-audit.md#2-methodology)). No CVE or CVSS score has been assigned. |
 | **Audited commit** | [`76edab4b4c93e199034ca1e8fa545c27b79a0a2d`](https://github.com/DagzTagz/Dagz-Scaffold/tree/76edab4b4c93e199034ca1e8fa545c27b79a0a2d) |
-| **Status** | Fixed in `fix/replay-git-isolation`, pending merge |
+| **Status** | Fixed and merged on `main` in [Dagz-Scaffold#1](https://github.com/DagzTagz/Dagz-Scaffold/pull/1), merge [`4f09170`](https://github.com/DagzTagz/Dagz-Scaffold/commit/4f091704b708918de37594977cfb1ea73c282785) (2026-11-24) |
 | **Published** | 2026-11-24 |
 | **Default configuration affected?** | No. `--replay` is off unless you pass it. |
 
@@ -78,7 +78,7 @@ Use any one of these:
 
 ## Fix
 
-**Status: fixed in `fix/replay-git-isolation`, pending merge.**
+**Status: fixed and merged on `main` in [Dagz-Scaffold#1](https://github.com/DagzTagz/Dagz-Scaffold/pull/1), merge [`4f09170`](https://github.com/DagzTagz/Dagz-Scaffold/commit/4f091704b708918de37594977cfb1ea73c282785).**
 
 - `ReplayGitDir` now carries an explicit lifecycle, `GitDirState`: `UNOPENED`, `ISOLATED`, `NO_REPO`, `CLOSED`. `open()` ends in `ISOLATED` (the temporary git dir is ready) or `NO_REPO` (no `.git` at the checkout root), or raises `ReplayDenied`.
 - `env_updates()`, which `git_spawn` calls before building the command, returns the isolated `GIT_DIR` / `GIT_WORK_TREE` only in `ISOLATED`. In `NO_REPO` it raises `ReplayDenied("git_no_repo")`, and in `CLOSED` `ReplayDenied("git_dir_closed")`, so git is never spawned. The denial marks the replay `unreplayable`, which `score.py` already turns into `missing_evidence`: the run fails closed.
