@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
+from enum import StrEnum
 from pathlib import Path
 
 REQUIRED = ("plan.md", "critic.md", "evidence.md", "score.json")
@@ -195,18 +196,41 @@ Task:
 """
 
 
-def retry_prompt(task_path: Path, run_dir: Path, task_text: str) -> str:
+def retry_prompt(
+    task_path: Path,
+    run_dir: Path,
+    task_text: str,
+    *,
+    stage: str = "score",
+    reasons: tuple[str, ...] = (),
+    verdict: str | None = None,
+) -> str:
+    """Prompt for the next attempt, naming why the last one stopped.
+
+    stage is "score" (score.py did not pass) or "ship_gate" (score passed,
+    the gate blocked). reasons are that stage's fail reasons or blocks.
+    """
     rel_task = os.path.relpath(task_path, REPO_ROOT)
     rel_run = os.path.relpath(run_dir, REPO_ROOT)
     critic = ""
     critic_path = run_dir / "critic.md"
     if critic_path.is_file():
         critic = critic_path.read_text(encoding="utf-8")[:8000]
-    return f"""REJECT returns to the builder. Do not bargain the verdict down.
+    if verdict == "REJECT":
+        opening = "REJECT returns to the builder. Do not bargain the verdict down."
+    elif stage == "ship_gate":
+        opening = "score.py passed, but ship_gate.py blocked the run. The run is not done."
+    else:
+        opening = "score.py did not pass this run. The run is not done."
+    listed = "\n".join(f"- {r}" for r in reasons[:20]) or "- (no reason recorded)"
+    program = "ship_gate.py" if stage == "ship_gate" else "score.py"
+    return f"""{opening}
 Do not invent score.json override. Do not pass --honor-override.
 
-The previous persist of {rel_task} did not pass score.py / ship-gate.
-Write artifacts into {rel_run}/. Fix the blockers and re-run verification.
+The previous persist of {rel_task} stopped at {program}. Reasons:
+{listed}
+
+Write artifacts into {rel_run}/. Fix these and re-run verification.
 
 Critic (blockers):
 ---
@@ -235,6 +259,26 @@ def _score_dir(run_dir: Path) -> dict:
         }
 
 
+class Step(StrEnum):
+    """What the live loop does after one agent call (audit F3)."""
+
+    GATE = "gate"  # score passed; run ship_gate next
+    DONE = "done"  # score passed and ship_gate passed
+    RETRY = "retry"  # score or gate failed; another agent call is left
+    EXHAUSTED = "exhausted"  # score or gate failed; no calls left
+
+
+def next_step(
+    attempt: int, max_calls: int, score_ok: bool, gate_blocks: list[str] | None
+) -> Step:
+    """Transition table for run_live. gate_blocks is None before gating."""
+    if score_ok and gate_blocks is None:
+        return Step.GATE
+    if score_ok and not gate_blocks:
+        return Step.DONE
+    return Step.RETRY if attempt < max_calls else Step.EXHAUSTED
+
+
 def _record_attempts(run_dir: Path, n: int) -> None:
     path = run_dir / "score.json"
     if not path.is_file():
@@ -261,39 +305,63 @@ def run_live(task_path: Path, run_dir: Path, task_text: str) -> int:
         return 2
     run_dir.mkdir(parents=True, exist_ok=True)
     max_calls = 2
+    stage = "score"
+    reasons: tuple[str, ...] = ()
+    verdict: str | None = None
     for call in range(1, max_calls + 1):
         prompt = (
             live_prompt(task_path, run_dir, task_text)
             if call == 1
-            else retry_prompt(task_path, run_dir, task_text)
+            else retry_prompt(
+                task_path, run_dir, task_text, stage=stage, reasons=reasons, verdict=verdict
+            )
         )
         cmd = ["grok", "-p", prompt, "--cwd", str(REPO_ROOT)]
         print("exec:", "grok", "-p", "<prompt>", "--cwd", str(REPO_ROOT), file=sys.stderr)
         subprocess.run(cmd, check=False)
-        result = _score_dir(run_dir)
+        # Record attempts before scoring, so the bytes that score.py and the
+        # gate read are the bytes left on disk (audit F3).
         _record_attempts(run_dir, call)
+        result = _score_dir(run_dir)
         missing = [name for name in REQUIRED if not (run_dir / name).is_file()]
-        ok = bool(result.get("ok")) and not missing
+        score_ok = bool(result.get("ok")) and not missing
         verdict = (result.get("score") or {}).get("verdict")
-        if ok:
-            print(result.get("summary", "ok"), file=sys.stderr)
-            return 0
-        print(
-            "live persist not ok:",
-            result.get("summary") or result.get("fail_reasons") or missing,
-            file=sys.stderr,
-        )
-        if verdict == "REJECT" and call < max_calls:
-            print("REJECT returns to builder; retrying grok -p once", file=sys.stderr)
-            continue
-        if call < max_calls:
-            print("score failed; retrying grok -p once", file=sys.stderr)
-            continue
+        step = next_step(call, max_calls, score_ok, None)
+        if step is Step.GATE:
+            blocks = _gate_dir(run_dir)
+            step = next_step(call, max_calls, score_ok, blocks)
+            if step is Step.DONE:
+                print("SHIP-GATE: PASS", file=sys.stderr)
+                print(result.get("summary", "ok"), file=sys.stderr)
+                return 0
+            stage, reasons = "ship_gate", tuple(blocks)
+            print("live persist blocked by ship_gate:", blocks, file=sys.stderr)
+        else:
+            stage = "score"
+            reasons = tuple(result.get("fail_reasons") or ()) + tuple(
+                f"missing {name}" for name in missing
+            )
+            print(
+                "live persist not ok:",
+                result.get("summary") or result.get("fail_reasons") or missing,
+                file=sys.stderr,
+            )
+        if step is Step.RETRY:
+            print(f"{stage} did not pass; retrying grok -p once", file=sys.stderr)
     print(
-        "error: live persist did not pass score after 2 grok calls; not claiming success",
+        f"error: live persist did not pass score and ship_gate after {max_calls} grok "
+        "calls; not claiming success",
         file=sys.stderr,
     )
     return 1
+
+
+def _gate_dir(run_dir: Path) -> list[str]:
+    """Run the same gate the prompt tells the agent to run (--git-checks)."""
+    from ship_gate import gate_run
+
+    blocks, _ = gate_run(run_dir, git_checks=True)
+    return blocks
 
 
 def main(argv: list[str] | None = None) -> int:
