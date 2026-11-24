@@ -1031,6 +1031,73 @@ class SecurityRegressions(unittest.TestCase):
         self.assertEqual(result["pairs"][0]["action"], "denied", result)
         self.assertEqual(result["pairs"][0]["reason"], "git_dir")
 
+    def test_checkout_without_git_does_not_use_enclosing_repo(self) -> None:
+        # F1: a checkout with no .git of its own inside another work tree must
+        # not fall through to the enclosing repo (and run its clean filter).
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            outer = base / "outer"
+            inner = outer / "inner"
+            inner.mkdir(parents=True)
+            canary = base / "canary"
+            script = base / "clean.sh"
+            script.write_text(f"#!/bin/sh\nprintf x >> {canary}\ncat\n", encoding="utf-8")
+            script.chmod(0o755)
+            _git(outer, "init", "-q")
+            _git(outer, "config", "user.email", "t@example.com")
+            _git(outer, "config", "user.name", "t")
+            (outer / ".gitattributes").write_text("*.txt filter=probe\n", encoding="utf-8")
+            (inner / "f.txt").write_text("a\n", encoding="utf-8")
+            _git(outer, "add", ".gitattributes", "inner/f.txt")
+            _git(outer, "commit", "-q", "-m", "init")
+            _git(outer, "config", "filter.probe.clean", str(script))
+            (inner / "f.txt").write_text("b\n", encoding="utf-8")
+            evidence = _fence(
+                "git status --porcelain", prose="Process exit: 0\n"
+            ) + _fence("git diff --stat", prose="Process exit: 0\n")
+            result = replay.replay_evidence(evidence, repo_root=inner)
+            self.assertFalse(canary.exists(), result)
+        self.assertEqual(
+            [(pair["action"], pair["reason"]) for pair in result["pairs"]],
+            [("denied", "git_no_repo"), ("denied", "git_no_repo")],
+            result,
+        )
+        self.assertTrue(result["unreplayable"], result)
+
+    def test_replay_git_dir_states_are_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            bare = base / "no-repo"
+            bare.mkdir()
+            no_repo = replay.ReplayGitDir.open(bare)
+            self.assertIs(no_repo.state, replay.GitDirState.NO_REPO)
+            with self.assertRaisesRegex(replay.ReplayDenied, "^git_no_repo$"):
+                no_repo.env_updates()
+            no_repo.close()
+            self.assertIs(no_repo.state, replay.GitDirState.CLOSED)
+
+            root = base / "repo"
+            root.mkdir()
+            _git(root, "init", "-q")
+            isolated = replay.ReplayGitDir.open(root)
+            self.assertIs(isolated.state, replay.GitDirState.ISOLATED)
+            env = isolated.env_updates()
+            self.assertEqual(env["GIT_WORK_TREE"], str(root.resolve()))
+            self.assertTrue(Path(env["GIT_DIR"]).is_dir())
+            self.assertNotEqual(Path(env["GIT_DIR"]), (root / ".git").resolve())
+            isolated.close()
+            self.assertIs(isolated.state, replay.GitDirState.CLOSED)
+            self.assertFalse(Path(env["GIT_DIR"]).exists())
+            with self.assertRaisesRegex(replay.ReplayDenied, "^git_dir_closed$"):
+                isolated.env_updates()
+
+    def test_replay_env_stops_git_discovery_at_repo_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve() / "repo"
+            root.mkdir()
+            env = replay.replay_env(root)
+        self.assertEqual(env["GIT_CEILING_DIRECTORIES"], str(root.parent))
+
     def test_run_id_cannot_escape_out_dir(self) -> None:
         import run as runmod
 

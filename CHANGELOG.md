@@ -9,6 +9,15 @@ Versions follow [Semantic Versioning](https://semver.org/) while pre-1.0 (`0.x` 
 
 ---
 
+## [Unreleased]
+
+### Security
+
+- `score.py --replay`: a checkout with no `.git` of its own is now an explicit `NO_REPO` state, and git replay there is denied (`git_no_repo`) and counts as missing evidence. Before, git searched parent directories and could load an enclosing repository's config, including its clean filters. `replay_env` also sets `GIT_CEILING_DIRECTORIES`. See [docs/security/ADVISORY-2026-11-24-replay-enclosing-repo.md](docs/security/ADVISORY-2026-11-24-replay-enclosing-repo.md).
+- Added the November 2026 implicit-state-machine audit: [docs/audits/2026-11-state-machine-audit.md](docs/audits/2026-11-state-machine-audit.md).
+
+---
+
 ## [0.1.0] — 2026-09-14 — persistence harness, not a clipboard
 
 First public line that is meant to **fail closed** on lying or lazy agent folders. Stdlib only. Live `runs/` stay gitignored.
