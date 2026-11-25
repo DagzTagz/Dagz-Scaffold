@@ -11,6 +11,10 @@ Versions follow [Semantic Versioning](https://semver.org/) while pre-1.0 (`0.x` 
 
 ## [Unreleased]
 
+### Docs
+
+- The Grok Build CLI links in the README and getting-started guide now point at the official repository, [xai-org/grok-build](https://github.com/xai-org/grok-build). The old `xai-org/grok-cli` URL returned 404.
+
 ---
 
 ## [0.2.0] - 2026-11-25

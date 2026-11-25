@@ -34,7 +34,7 @@ The critic’s verdict is one of: `REJECT`, `ACCEPT WITH WAIVERS`, or `ACCEPT`. 
 
 ## Who this is for
 
-The intended user already has the [Grok Build CLI](https://github.com/xai-org/grok-cli). You start a persist in Grok, then grade the folder with Python.
+The intended user already has the [Grok Build CLI](https://github.com/xai-org/grok-build). You start a persist in Grok, then grade the folder with Python.
 
 The **grading** half (the inspector) is ordinary Python 3.11+ with **no extra packages**. Anyone who can produce the same folder shape can be graded. The **start button** in this repo (`/persist` and `harness/run.py`) calls `grok`. That is how the classroom is furnished, not a law of physics.
 

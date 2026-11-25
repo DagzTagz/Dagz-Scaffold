@@ -69,7 +69,7 @@ You should see `skipped grok` and a new directory under `runs/`. That directory 
 
 ## 4. A real persist (this is the actual exam)
 
-Install and log in to [Grok Build](https://github.com/xai-org/grok-cli) on this machine first. Live mode can send the task, the diffs, and command output to xAI as **your** user. This project does not pay for it.
+Install and log in to [Grok Build](https://github.com/xai-org/grok-build) on this machine first. Live mode can send the task, the diffs, and command output to xAI as **your** user. This project does not pay for it.
 
 Open a terminal **in the repo**:
 
