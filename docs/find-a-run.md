@@ -92,7 +92,7 @@ python3 harness/score.py runs/<id>
 python3 harness/score.py runs/score.json
 ```
 
-`--git-checks` looks at whether **this clone** has staged a live `runs/` folder or a secret-shaped file. Use it on a live packet. Skip it on `examples/sample-run`. With or without that flag, ship-gate still reads the run folder itself for secret-shaped text and for a symlink in place of a packet file.
+`--git-checks` looks at whether **this clone** has staged a live `runs/` folder or a secret-shaped file. It only works in a real clone of Dagz-Scaffold. A copy without its own `.git` folder blocks with `git_no_repo`, so it never reads the staging area of a project it happens to sit in. Use it on a live packet. Skip it on `examples/sample-run`. With or without that flag, ship-gate still reads the run folder itself for secret-shaped text and for a symlink in place of a packet file.
 
 ---
 
