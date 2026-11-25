@@ -25,6 +25,10 @@ Versions follow [Semantic Versioning](https://semver.org/) while pre-1.0 (`0.x` 
 - **Verdict rules in one place (audit F8).** `score.gate_passes` is the only override rule, and `ship_gate.py` uses it. Before, `ship_gate.py` had a looser copy.
 - **One fence lexer (audit F9).** `task_contract.lex_fences` is the only reader of Markdown fences in the harness. Nested and inline backticks no longer split evidence differently between checks.
 
+### Added
+
+- **Scorer attestation for vesper-bind.** `score.py --attest-key KEY` (or `DAGZ_SCORER_KEY_FILE`) adds an `attestation` object (`dagz-scaffold/score-attestation/v1`, HMAC-SHA256) that covers the scorer's result and the SHA-256 of the four packet files. New `harness/attest.py keygen` and `attest.py verify`. The key must be mode `0600` or `0400`, owned by you, and outside the checkout and the run folder. Without a key the output is unchanged. This is a shared-secret MAC: it only stops forgery by an agent that cannot read the key. See [docs/scorer.md](docs/scorer.md#attesting-a-score-for-vesper-bind). (Residual item S7 from the shared-compute review; vesper-bind starts requiring it in its matching pull request.)
+
 ### Changed
 
 - **Breaking:** a `score.json` with an `override` on `ACCEPT` or `ACCEPT WITH WAIVERS` is now invalid. `override` is only meaningful on `REJECT`.

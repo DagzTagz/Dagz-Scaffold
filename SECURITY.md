@@ -131,6 +131,8 @@ Ship-gate does not re-run evidence. It does read the run folder for secret-shape
 
 This harness does not ship API keys. Do not copy `~/.grok/auth.json`, `~/.xai_api_key`, SSH keys, or cloud credentials into the repo.
 
+`score.py --attest-key KEY` (or `DAGZ_SCORER_KEY_FILE`) adds an HMAC-SHA256 `attestation` to the scorer's JSON, covering the result and the SHA-256 of `plan.md`, `evidence.md`, `critic.md` and `score.json`. vesper-bind uses it to tell a real scorer pass from a hand-written `score-result.json`. It is a shared secret: anyone who can read the key can attest anything. It only helps when the agent cannot read the key, so keep the key outside the checkout and run folders (the scorer refuses a key inside either), mode `0600`, owned by the account that scores. If agents run under the same OS account as the scorer, they can read the key and the attestation proves nothing. Details: [docs/scorer.md](docs/scorer.md#attesting-a-score-for-vesper-bind).
+
 ---
 
 ## Hooks and CI
