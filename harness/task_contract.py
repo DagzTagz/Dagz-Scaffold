@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
-import subprocess
 from pathlib import Path
 from typing import NamedTuple
+
+import checkout_git
 
 DUMP_ARROW = " -> "
 
@@ -188,36 +188,19 @@ def parse_task_contract(text: str, path: Path) -> TaskContract | None:
 
 
 def _git_repo(repo_root: Path) -> bool:
-    git = shutil.which("git")
-    if not git:
-        return False
-    completed = subprocess.run(
-        [git, "-c", "core.fsmonitor=", "-c", "core.hooksPath=/dev/null", "rev-parse", "--is-inside-work-tree"],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-    )
-    return completed.returncode == 0 and completed.stdout.strip() == "true"
+    """True only when repo_root is the top of its own git work tree.
+
+    A copy with no .git of its own inside another repository is not a git
+    checkout here: git never reads the enclosing repository's HEAD or config.
+    """
+    return checkout_git.classify_checkout(repo_root) is checkout_git.CheckoutGit.OWN_REPO
 
 
 def _head_task_text(repo_root: Path, rel: str) -> str | None:
-    git = shutil.which("git")
-    if not git:
+    try:
+        completed = checkout_git.run_git(repo_root, ["show", "--no-textconv", f"HEAD:{rel}"])
+    except FileNotFoundError:
         return None
-    completed = subprocess.run(
-        [
-            git,
-            "-c",
-            "core.fsmonitor=",
-            "-c",
-            "core.hooksPath=/dev/null",
-            "show",
-            f"HEAD:{rel}",
-        ],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-    )
     if completed.returncode != 0:
         return None
     return completed.stdout

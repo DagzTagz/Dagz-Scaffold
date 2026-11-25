@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import ship_gate
 
@@ -30,11 +31,13 @@ def _capture_main(argv: list[str], **kwargs) -> tuple[int, str, str]:
 def _map_runner(names: str, blobs: dict[str, str] | None = None):
     blobs = blobs or {}
 
-    def runner(_root: Path, args: list[str]) -> str:
+    def runner(root: Path, args: list[str]) -> str:
+        if args == ["rev-parse", "--show-toplevel"]:
+            return f"{root}\n"
         if args[:3] == ["diff", "--cached", "--name-only"]:
             return names
-        if args[:1] == ["show"] and len(args) == 2 and args[1].startswith(":"):
-            path = args[1][1:]
+        if args[:2] == ["show", "--no-textconv"] and len(args) == 3 and args[2].startswith(":"):
+            path = args[2][1:]
             if path not in blobs:
                 raise ship_gate.GitError(128, f"not staged: {path}")
             return blobs[path]
@@ -142,8 +145,10 @@ class ShipGate(unittest.TestCase):
         self.assertEqual(blocks, [])
 
     def test_git_error_blocks(self) -> None:
-        def runner(_root: Path, _args: list[str]) -> str:
-            raise ship_gate.GitError(128, "fatal: not a git repository")
+        def runner(root: Path, args: list[str]) -> str:
+            if args == ["rev-parse", "--show-toplevel"]:
+                return f"{root}\n"
+            raise ship_gate.GitError(128, "fatal: bad index")
 
         blocks = ship_gate.git_index_blocks(REPO_ROOT, runner=runner)
         self.assertEqual(blocks, ["git_error"])
@@ -245,3 +250,100 @@ class ShipGate(unittest.TestCase):
                 any(b.startswith("staged secret") and ".env" in b for b in blocks)
             )
             self.assertFalse(any(".env.example" in b for b in blocks))
+
+    # S14: the gate's git calls must not use an enclosing repository.
+
+    def _monorepo(self, base: Path) -> tuple[Path, Path]:
+        """gate_repro.py layout: a Scaffold copy with no .git inside another repo."""
+        outer = base / "org-monorepo"
+        inner = outer / "tools" / "Dagz-Scaffold"
+        inner.mkdir(parents=True)
+        for args in (
+            ["git", "init", "-q"],
+            ["git", "config", "user.email", "a@b"],
+            ["git", "config", "user.name", "n"],
+        ):
+            subprocess.run(args, cwd=outer, check=True, capture_output=True)
+        (outer / "README").write_text("x", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=outer, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "i"], cwd=outer, check=True, capture_output=True)
+        (outer / "other-team").mkdir()
+        (outer / "other-team" / ".env").write_text("K=1\n", encoding="utf-8")
+        (inner / "runs" / "live1").mkdir(parents=True)
+        (inner / "runs" / "live1" / "evidence.md").write_text("x\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "other-team/.env", "tools/Dagz-Scaffold/runs/live1/evidence.md"],
+            cwd=outer,
+            check=True,
+            capture_output=True,
+        )
+        return outer, inner
+
+    def test_vendored_copy_in_monorepo_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _outer, inner = self._monorepo(Path(tmp).resolve())
+            blocks = ship_gate.git_index_blocks(inner, runner=ship_gate.default_git_runner)
+        self.assertEqual(blocks, [ship_gate.NO_REPO_BLOCK])
+        # Before the fix: ['staged secret name: other-team/.env'], and the
+        # staged live run under tools/Dagz-Scaffold/runs/ was missed.
+        self.assertFalse(any("other-team" in b for b in blocks))
+
+    def test_inherited_git_dir_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            outer, inner = self._monorepo(Path(tmp).resolve())
+            with mock.patch.dict(
+                os.environ,
+                {"GIT_DIR": str(outer / ".git"), "GIT_WORK_TREE": str(outer)},
+            ):
+                blocks = ship_gate.git_index_blocks(inner, runner=ship_gate.default_git_runner)
+        self.assertEqual(blocks, [ship_gate.NO_REPO_BLOCK])
+
+    def test_real_clone_still_checked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = _init_git_work(Path(tmp).resolve())
+            (work / "runs" / "live1").mkdir(parents=True)
+            (work / "runs" / "live1" / "evidence.md").write_text("x\n", encoding="utf-8")
+            (work / ".env").write_text("XAI_API_KEY=notempty\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "add", "-f", "runs/live1/evidence.md", ".env"],
+                cwd=work,
+                check=True,
+                capture_output=True,
+            )
+            blocks = ship_gate.git_index_blocks(work, runner=ship_gate.default_git_runner)
+        self.assertIn("staged live run: runs/live1/evidence.md", blocks)
+        self.assertIn("staged secret name: .env", blocks)
+        self.assertIn("staged secret content: .env", blocks)
+
+    def test_subdirectory_of_a_clone_is_not_the_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = _init_git_work(Path(tmp).resolve())
+            sub = work / "nested"
+            sub.mkdir()
+            runner = lambda root, args: f"{work}\n"  # noqa: E731
+            blocks = ship_gate.git_index_blocks(sub, runner=runner)
+        self.assertEqual(blocks, [ship_gate.NOT_TOP_BLOCK])
+
+    def test_live_run_path_rule(self) -> None:
+        self.assertTrue(ship_gate.is_live_run_path("runs/x/evidence.md"))
+        self.assertFalse(ship_gate.is_live_run_path("runs/.gitkeep"))
+        self.assertFalse(ship_gate.is_live_run_path("examples/runs-notes.md"))
+        self.assertFalse(ship_gate.is_live_run_path("runsheet.md"))
+
+    def test_task_contract_ignores_enclosing_repo(self) -> None:
+        import task_contract
+
+        with tempfile.TemporaryDirectory() as tmp:
+            outer, inner = self._monorepo(Path(tmp).resolve())
+            (inner / "tasks").mkdir()
+            task = REPO_ROOT / "tasks" / "001-units-trap.md"
+            (inner / "tasks" / task.name).write_text(task.read_text(encoding="utf-8"), encoding="utf-8")
+            # The outer repo commits a different file at its own tasks/ path.
+            (outer / "tasks").mkdir()
+            (outer / "tasks" / task.name).write_text("decoy\n", encoding="utf-8")
+            subprocess.run(["git", "add", "tasks"], cwd=outer, check=True, capture_output=True)
+            subprocess.run(["git", "commit", "-qm", "decoy"], cwd=outer, check=True, capture_output=True)
+            self.assertFalse(task_contract._git_repo(inner))
+            contract = task_contract.load_task_contract(inner, f"tasks/{task.name}")
+        self.assertIsNotNone(contract)
+

@@ -856,6 +856,13 @@ class OneFenceLexer(unittest.TestCase):
         self.assertFalse(hasattr(score, "_parse_fence"))
 
 
+def _clean_index_runner(root: Path, args: list[str]) -> str:
+    """A clone at root with nothing staged."""
+    if args == ["rev-parse", "--show-toplevel"]:
+        return f"{root}\n"
+    return ""
+
+
 class LiveLoop(unittest.TestCase):
     """run_live gates every passing score and retries with the real reason (audit F3)."""
 
@@ -902,7 +909,7 @@ class LiveLoop(unittest.TestCase):
             mock.patch.object(runmod, "grok_available", return_value=True),
             mock.patch.object(runmod.subprocess, "run", side_effect=fake_grok),
             mock.patch.object(runmod, "_score_dir", side_effect=spy_score),
-            mock.patch.object(ship_gate, "default_git_runner", return_value=""),
+            mock.patch.object(ship_gate, "default_git_runner", side_effect=_clean_index_runner),
             mock.patch("sys.stderr", new_callable=io.StringIO),
         ):
             code = runmod.run_live(tmp / "task.md", run_dir, "task text")

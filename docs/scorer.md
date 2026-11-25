@@ -23,7 +23,7 @@ python3 harness/ship_gate.py runs/YOUR-FOLDER --git-checks
 
 If the first command says the path is not a directory, you pointed it at a file or a typo. Use the folder name from `ls runs/`, not `score.json` by itself.
 
-You can skip `--git-checks` when you are only practicing on `examples/sample-run`. The ship-gate still reads that folder for secret-shaped text and for a symlink in place of a packet file. Use `--git-checks` on a live folder so it also looks at what this clone has staged: a secret, or a `runs/` directory on its way into a commit.
+You can skip `--git-checks` when you are only practicing on `examples/sample-run`. The ship-gate still reads that folder for secret-shaped text and for a symlink in place of a packet file. Use `--git-checks` on a live folder so it also looks at what this clone has staged: a secret, or a `runs/` directory on its way into a commit. `--git-checks` needs a real clone. If this copy of Dagz-Scaffold has no `.git` of its own (a ZIP or a folder copied into another project), it blocks with `git_no_repo` instead of reading the other project's staging area.
 
 ---
 
