@@ -11,13 +11,17 @@ Versions follow [Semantic Versioning](https://semver.org/) while pre-1.0 (`0.x` 
 
 ## [Unreleased]
 
+---
+
+## [0.2.0] - 2026-11-25
+
 ### Security
 
 - **Breaking:** `score.py --replay` no longer runs `python -c` commands that import `harness_tmp` unless you also pass the new `--allow-harness-tmp` flag. That import runs a module from the checkout as the person scoring, and the allowlist cannot check it, so a planted `harness_tmp.py` ran as the scorer. A refused command counts as missing evidence, adds `replay_harness_tmp_refused` to `fail_reasons`, and prints a hint. Without the flag the checkout is not on the replay interpreter's `sys.path`. Pasted red commands are never re-run, so they are unaffected. `--allow-harness-tmp` without `--replay` exits 2. (Residual item S13 from the shared-compute review.)
 - `score.py --replay`: a checkout with no `.git` of its own is now an explicit `NO_REPO` state, and git replay there is denied (`git_no_repo`) and counts as missing evidence. Before, git searched parent directories and could load an enclosing repository's config, including its clean filters. `replay_env` also sets `GIT_CEILING_DIRECTORIES`. See [docs/security/ADVISORY-2026-11-24-replay-enclosing-repo.md](docs/security/ADVISORY-2026-11-24-replay-enclosing-repo.md).
 - Added the November 2026 implicit-state-machine audit: [docs/audits/2026-11-state-machine-audit.md](docs/audits/2026-11-state-machine-audit.md).
 - The audit report now has a remediation status table. This repository's section of the disclosure is [docs/security/state-machine-audit-2026-11.md](docs/security/state-machine-audit-2026-11.md).
-- The audit report has a new section 7: five residual items from a shared-compute follow-up review, with their pull requests (status Open). The replay advisory and this repository's disclosure page link them.
+- The audit report has a new section 7: five residual items from a shared-compute follow-up review, with their pull requests (now Merged, with merge-commit links). The replay advisory and this repository's disclosure page link them.
 
 ### Fixed
 
