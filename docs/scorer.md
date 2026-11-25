@@ -106,6 +106,25 @@ Replayed `python -c` can still import `harness_tmp` and run that module. Read th
 
 Ship-gate does not re-run commands. Practice folders under `examples/` are never executed either. Replay happens only when you pass `--replay` to `score.py`.
 
+## Attesting a score for vesper-bind
+
+[vesper-bind](https://github.com/DagzTagz/vesper-bind) binds a run only when it has `score-result.json` from this scorer. A plain JSON file is easy to type by hand, so the scorer can sign its output with a key that the agent cannot read:
+
+```bash
+python3 harness/attest.py keygen ~/.config/dagz-scaffold/scorer.key   # once, mode 0600
+python3 harness/score.py --attest-key ~/.config/dagz-scaffold/scorer.key runs/YOUR-FOLDER > runs/YOUR-FOLDER/score-result.json
+python3 harness/attest.py verify runs/YOUR-FOLDER --key ~/.config/dagz-scaffold/scorer.key
+```
+
+You can set `DAGZ_SCORER_KEY_FILE` instead of passing `--attest-key`. The output gains an `attestation` object: the schema `dagz-scaffold/score-attestation/v1`, `alg` `hmac-sha256`, a key id (`kid`, the first 16 hex characters of SHA-256 of the key), the SHA-256 of the four packet files, and `mac`. The MAC is HMAC-SHA256 over canonical JSON (sorted keys, no spaces, UTF-8, no NaN) of `{"attestation": <those fields without mac>, "result": <every other top-level field>}`. Editing any field, swapping `evidence.md` after scoring, or using another key breaks it.
+
+What it does and does not prove:
+
+- It proves that someone holding the key scored exactly these four files and got this result.
+- It is a shared secret (HMAC), not a public signature. The binder needs the same key, and anyone who can read the key can make a valid attestation. The harness stays standard-library Python, which has HMAC but no public-key signatures.
+- It only stops forgery when the agent cannot read the key. Run agents under a different OS account from the one that scores and binds, or keep the key where agents cannot reach it. The scorer refuses a key inside the checkout or the run folder. If every agent shares the scorer's account, the key is readable and the attestation adds nothing.
+- The scorer hashes the files before and after scoring and refuses to attest if they changed in between.
+
 ---
 
 ## If you write tasks

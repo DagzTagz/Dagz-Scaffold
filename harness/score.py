@@ -12,6 +12,7 @@ import re
 import sys
 from pathlib import Path
 
+import attest as attestmod
 from task_contract import (
     ContractError,
     TaskContract,
@@ -550,6 +551,15 @@ def score_run(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Score a Dagz-Scaffold run folder")
+    parser.add_argument(
+        "--attest-key",
+        default=None,
+        metavar="KEY",
+        help=(
+            "Add an HMAC attestation made with this scorer key (default: "
+            "$DAGZ_SCORER_KEY_FILE). vesper-bind needs it. See harness/attest.py."
+        ),
+    )
     parser.add_argument("run_dir", type=Path, help="Path to a run folder")
     parser.add_argument(
         "--replay",
@@ -569,6 +579,18 @@ def main(argv: list[str] | None = None) -> int:
     if not run_dir.is_dir():
         print(f"error: not a directory: {run_dir}", file=sys.stderr)
         return 2
+
+    attest_key: bytes | None = None
+    before: dict[str, str] | None = None
+    key_path = attestmod.resolve_key_path(args.attest_key)
+    if key_path is not None:
+        try:
+            attestmod.refuse_key_inside(key_path, REPO_ROOT, run_dir)
+            attest_key = attestmod.read_key(key_path)
+            before = attestmod.input_digests(run_dir)
+        except attestmod.AttestError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
 
     schema_path = Path(__file__).resolve().parent / "schema" / "run.schema.json"
     try:
@@ -590,24 +612,31 @@ def main(argv: list[str] | None = None) -> int:
         print(error_doc["summary"], file=sys.stderr)
         return 1
 
-    json.dump(
-        {
-            k: result[k]
-            for k in (
-                "ok",
-                "fail_reasons",
-                "summary",
-                "critic_verdict",
-                "run_dir",
-                "score",
-                "scans",
-                "derived",
-                "replay",
-            )
-        },
-        sys.stdout,
-        indent=2,
-    )
+    out = {
+        k: result[k]
+        for k in (
+            "ok",
+            "fail_reasons",
+            "summary",
+            "critic_verdict",
+            "run_dir",
+            "score",
+            "scans",
+            "derived",
+            "replay",
+        )
+    }
+    if attest_key is not None:
+        try:
+            attestation = attestmod.attest(out, run_dir, attest_key)
+        except attestmod.AttestError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if attestation["inputs"] != before:
+            print("error: run files changed while scoring; not attesting", file=sys.stderr)
+            return 2
+        out[attestmod.ATTESTATION_FIELD] = attestation
+    json.dump(out, sys.stdout, indent=2)
     sys.stdout.write("\n")
     print(result["summary"], file=sys.stderr)
     return 0 if result["ok"] else 1
