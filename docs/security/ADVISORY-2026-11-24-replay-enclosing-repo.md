@@ -88,6 +88,13 @@ Use any one of these:
 
 After the fix, the reproduction above denies both git commands with `git_no_repo`, and the outer clean filter runs 0 times (it ran 9 times across the same calls on the audited commit).
 
+## Follow-up, 2026-11-25
+
+Two related gaps were found after this fix. Both are **Open** (pull requests pending review):
+
+- The same enclosing-repository problem still affected `ship_gate.py --git-checks` and the task-file `HEAD` check, which did not go through the replay path. Fix: [Dagz-Scaffold#5](https://github.com/DagzTagz/Dagz-Scaffold/pull/5).
+- Replay still ran `from harness_tmp import ...` commands, which import a module from the checkout as you. Fix: [Dagz-Scaffold#4](https://github.com/DagzTagz/Dagz-Scaffold/pull/4), which refuses them unless you pass `--allow-harness-tmp`.
+
 ## Credit and methodology
 
 Found during a self-audit by the DagzTagz maintainers, assisted by an AI agent, of the five public DagzTagz repositories at their default-branch HEADs. The audit looked for implicit state machines (lifecycles encoded as flags, `None` sentinels, or status strings). This issue is finding **F1**. High and Med findings were reproduced by running the code at the audited commit.

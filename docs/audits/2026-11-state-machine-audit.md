@@ -631,3 +631,21 @@ Identity = EcdsaIdentity | HmacIdentity
 - **Concurrency claims** (F4, F11) are based on the absence of any locking primitive in the code plus the read-modify-write structure. No multi-process race was run.
 - **No dynamic coverage.** The test suites were not run, and findings were not cross-checked against them except where noted.
 - **Line numbers** refer to the audited SHAs. Permalinks stay valid even after the code changes.
+
+## 7. Addendum, 2026-11-25: residual items from the shared-compute review
+
+After the 13 findings above were fixed, a follow-up review asked what the pre-patch and patched code could do on shared compute: shared runners and CI, agentic workflows across an org, shared filesystems, and several agents under one account. It found no GPU-related code in any repository. It did find five residual items that the fixes above did not cover. They are listed here with their pull requests. **None of them is merged yet.**
+
+| Item | Repo | What was left | Pull request | Breaking? | Status |
+|---|---|---|---|---|---|
+| S13 | Dagz-Scaffold | `score.py --replay` allowed `from harness_tmp import ...`, which runs a module from the checkout as the scorer. A planted `harness_tmp.py` ran on every replay. Documented, but on by default. | [Dagz-Scaffold#4](https://github.com/DagzTagz/Dagz-Scaffold/pull/4) | Yes: refused unless `--allow-harness-tmp` | Open |
+| S14 | Dagz-Scaffold | `ship_gate.py --git-checks` and the task-file `HEAD` check still ran plain `git`. For a copy with no `.git` inside another repository, the gate reported another project's staged files and missed a staged live run at a nested path. Not in the original audit. | [Dagz-Scaffold#5](https://github.com/DagzTagz/Dagz-Scaffold/pull/5) | Yes: `--git-checks` and the live loop need a real clone | Open |
+| S7 (scorer side) | Dagz-Scaffold | The scorer's JSON could not be told apart from a hand-written copy. | [Dagz-Scaffold#6](https://github.com/DagzTagz/Dagz-Scaffold/pull/6) adds `score.py --attest-key` (HMAC-SHA256) | No | Open |
+| S7 (binder side) | vesper-bind | `bind` trusted a plain `score-result.json`. Swapping `evidence.md` for one line and typing a matching result by hand was still bound. | [vesper-bind#4](https://github.com/DagzTagz/vesper-bind/pull/4) requires the attestation and a scorer key | Yes: `--scorer-key` or `DAGZ_SCORER_KEY_FILE`, and re-scoring | Open |
+| S15 (HMAC) | vesper-runtime | Without the `ecdsa` package, `init` silently created a shared-secret HMAC key. Anyone who can verify with it can forge. | [vesper-runtime#3](https://github.com/DagzTagz/vesper-runtime/pull/3) | Yes: refused unless `VESPER_INSECURE_ALLOW_HMAC_FALLBACK=1`; HMAC workspaces are verify-only | Open |
+| S15 (one account) | vesper-runtime | Agents running under one OS account all read the same `identity/` key. The `0700`/`0600` modes do not separate them. | [vesper-runtime#4](https://github.com/DagzTagz/vesper-runtime/pull/4) documents it, with a per-agent account and key how-to | No (docs) | Open |
+
+Trust assumption for S7, stated plainly: the scorer attestation is a shared-secret MAC between the account that scores and the account that binds. It stops a forged pass only by an agent that cannot read the key. Agents under the same account as the scorer can read it, which is exactly the S15 limit. The harness is standard-library only, so a public-key signature was not used.
+
+Releases: Dagz-Scaffold, vesper-bind and vesper-runtime have no tagged releases yet, so "fixed in version X" cannot be checked. Tags are planned after these pull requests are merged.
+

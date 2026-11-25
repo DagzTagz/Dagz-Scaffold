@@ -34,3 +34,14 @@ F2 and F13 are in vesper-bind, which reads Scaffold runs. F2 was **High** and wa
 
 - If a `score.json` you wrote by hand has an `override` on `ACCEPT` or `ACCEPT WITH WAIVERS`, remove it. It is now refused.
 - `harness/run.py` live runs can now end with exit 1 when `ship_gate` blocks a run that `score.py` passed. That is the intended behaviour.
+
+## Follow-up, 2026-11-25: residual items
+
+A follow-up review of shared-compute setups found three more items in this repository. The full list, including vesper-bind and vesper-runtime, is in [section 7 of the report](../audits/2026-11-state-machine-audit.md#7-addendum-2026-11-25-residual-items-from-the-shared-compute-review).
+
+| Item | What was left | Pull request | Status |
+|---|---|---|---|
+| S13 | `--replay` ran `from harness_tmp import ...` commands, so a planted `harness_tmp.py` ran as the scorer. | [Dagz-Scaffold#4](https://github.com/DagzTagz/Dagz-Scaffold/pull/4). **Breaking:** refused unless `--allow-harness-tmp`. | Open |
+| S14 | `ship_gate.py --git-checks` and the task-file check used an enclosing repository's index and `HEAD` for a copy with no `.git`. | [Dagz-Scaffold#5](https://github.com/DagzTagz/Dagz-Scaffold/pull/5). **Breaking:** `--git-checks` needs a real clone. | Open |
+| S7 | Nothing let vesper-bind tell the scorer's output from a hand-written `score-result.json`. | [Dagz-Scaffold#6](https://github.com/DagzTagz/Dagz-Scaffold/pull/6) adds `score.py --attest-key`. vesper-bind starts requiring it in [vesper-bind#4](https://github.com/DagzTagz/vesper-bind/pull/4). | Open |
+

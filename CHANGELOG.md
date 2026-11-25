@@ -16,6 +16,7 @@ Versions follow [Semantic Versioning](https://semver.org/) while pre-1.0 (`0.x` 
 - `score.py --replay`: a checkout with no `.git` of its own is now an explicit `NO_REPO` state, and git replay there is denied (`git_no_repo`) and counts as missing evidence. Before, git searched parent directories and could load an enclosing repository's config, including its clean filters. `replay_env` also sets `GIT_CEILING_DIRECTORIES`. See [docs/security/ADVISORY-2026-11-24-replay-enclosing-repo.md](docs/security/ADVISORY-2026-11-24-replay-enclosing-repo.md).
 - Added the November 2026 implicit-state-machine audit: [docs/audits/2026-11-state-machine-audit.md](docs/audits/2026-11-state-machine-audit.md).
 - The audit report now has a remediation status table. This repository's section of the disclosure is [docs/security/state-machine-audit-2026-11.md](docs/security/state-machine-audit-2026-11.md).
+- The audit report has a new section 7: five residual items from a shared-compute follow-up review, with their pull requests (status Open). The replay advisory and this repository's disclosure page link them.
 
 ### Fixed
 
