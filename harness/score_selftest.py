@@ -670,7 +670,9 @@ class ReplaySandbox(unittest.TestCase):
                 (run_dir / "score.json").read_text(encoding="utf-8")
             )["waivers"]
             with mock.patch("replay.subprocess.run", side_effect=fake_run):
-                result = score.score_run(run_dir, SCHEMA, replay=True)
+                result = score.score_run(
+                    run_dir, SCHEMA, replay=True, allow_harness_tmp=True
+                )
             self.assertTrue(result["ok"], result)
             self.assertEqual(result["fail_reasons"], [])
             self.assertEqual(result["score"]["waivers"], waivers_before)
@@ -1279,6 +1281,96 @@ class SecurityRegressions(unittest.TestCase):
             )
             self.assertEqual(code, 2)
             self.assertFalse((Path(tmp) / "escape").exists())
+
+
+class ReplayHarnessTmpOptIn(unittest.TestCase):
+    """S13: a planted harness_tmp module must not run unless the scorer opts in."""
+
+    PAYLOAD = 'python3 -c "from harness_tmp import f; print(f())"'
+
+    def _plant(self, root: Path) -> Path:
+        canary = root / "canary"
+        (root / "harness_tmp.py").write_text(
+            f"open({str(canary)!r}, 'w').write('ran')\n"
+            "def f():\n    return 'hi'\n",
+            encoding="utf-8",
+        )
+        return canary
+
+    def test_default_denies_harness_tmp_payloads(self) -> None:
+        for src in LIVE_C_PAYLOADS:
+            with self.subTest(src=src[:40]):
+                with self.assertRaises(replay.ReplayDenied) as ctx:
+                    replay.python_spawn(["python3", "-c", src], REPO_ROOT)
+                self.assertEqual(str(ctx.exception), replay.HARNESS_TMP_DENIED)
+
+    def test_planted_module_not_run_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            canary = self._plant(root)
+            evidence = _fence(self.PAYLOAD, "hi", "Process exit: 0\n")
+            with mock.patch("replay.subprocess.run") as mock_run:
+                result = replay.replay_evidence(evidence, repo_root=root)
+                self.assertEqual(mock_run.call_count, 0)
+            self.assertFalse(canary.exists())
+        self.assertTrue(result["unreplayable"])
+        self.assertTrue(result["harness_tmp_refused"])
+        self.assertEqual(result["pairs"][0]["action"], "denied")
+        self.assertEqual(result["pairs"][0]["reason"], replay.HARNESS_TMP_DENIED)
+
+    def test_planted_module_runs_only_with_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            canary = self._plant(root)
+            evidence = _fence(self.PAYLOAD, "hi", "Process exit: 0\n")
+            result = replay.replay_evidence(
+                evidence, repo_root=root, allow_harness_tmp=True
+            )
+            self.assertTrue(canary.exists())
+        self.assertEqual(result["pairs"][0]["action"], "executed", result)
+        self.assertFalse(result["harness_tmp_refused"])
+
+    def test_checkout_not_on_sys_path_without_opt_in(self) -> None:
+        argv = ["python3", "-c", "print(1)"]
+        _spawn, env = replay.python_spawn(argv, REPO_ROOT)
+        self.assertNotIn("DAGZ_REPLAY_ROOT", env)
+        _spawn, env = replay.python_spawn(argv, REPO_ROOT, allow_harness_tmp=True)
+        self.assertEqual(env["DAGZ_REPLAY_ROOT"], str(REPO_ROOT.resolve()))
+
+    def test_score_run_reports_refusal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            shutil.copytree(SAMPLE, run_dir)
+            evidence = (run_dir / "evidence.md").read_text(encoding="utf-8")
+            (run_dir / "evidence.md").write_text(
+                evidence + "\n" + _fence(self.PAYLOAD, "hi", "Process exit: 0\n"),
+                encoding="utf-8",
+            )
+            real_run = subprocess.run
+            spawned: list[str] = []
+
+            def fake_run(argv, **kwargs):
+                if Path(argv[0]).name == "git":
+                    return real_run(argv, **kwargs)
+                payload = (kwargs.get("env") or {}).get("DAGZ_REPLAY_C", "")
+                spawned.append(payload)
+                self.assertNotIn("harness_tmp", payload)
+                return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+            with mock.patch("replay.subprocess.run", side_effect=fake_run):
+                result = score.score_run(run_dir, SCHEMA, replay=True)
+        self.assertIn("replay_harness_tmp_refused", result["fail_reasons"])
+        self.assertIn("missing_evidence", result["fail_reasons"])
+        self.assertFalse(result["ok"])
+
+    def test_cli_flag_needs_replay(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, str(HARNESS_DIR / "score.py"), "--allow-harness-tmp", str(SAMPLE)],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("--allow-harness-tmp only makes sense with --replay", completed.stderr)
 
 
 def _required_verification_section(text: str) -> str | None:

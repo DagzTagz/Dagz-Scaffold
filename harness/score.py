@@ -414,6 +414,7 @@ def score_run(
     replay: bool = False,
     *,
     honor_override: bool = False,
+    allow_harness_tmp: bool = False,
 ) -> dict:
     missing = [name for name in REQUIRED_FILES if not (run_dir / name).is_file()]
     if missing:
@@ -508,11 +509,15 @@ def score_run(
         if is_under_examples(run_dir, REPO_ROOT):
             replay_doc = {"skipped": "examples fixture"}
         else:
-            replay_doc = replay_evidence(evidence, repo_root=REPO_ROOT)
+            replay_doc = replay_evidence(
+                evidence, repo_root=REPO_ROOT, allow_harness_tmp=allow_harness_tmp
+            )
             if replay_doc.get("mismatch") or replay_doc.get("unreplayable"):
                 payload = dict(payload)
                 payload["missing_evidence"] = True
                 fail_reasons.append("missing_evidence")
+            if replay_doc.get("harness_tmp_refused"):
+                fail_reasons.append("replay_harness_tmp_refused")
 
     needs_call = contract is not None and (
         bool(contract.must_appear) or contract.red_then_green
@@ -558,12 +563,23 @@ def main(argv: list[str] | None = None) -> int:
         help="Re-run allowlisted python -c and git from evidence (local subprocess, no network)",
     )
     parser.add_argument(
+        "--allow-harness-tmp",
+        action="store_true",
+        default=False,
+        help=(
+            "With --replay, also run `from harness_tmp import ...` commands. That "
+            "imports code from this checkout as you. Off by default; read it first."
+        ),
+    )
+    parser.add_argument(
         "--honor-override",
         action="store_true",
         default=False,
         help="Accept score.json override.by and override.reason. The file alone does not.",
     )
     args = parser.parse_args(argv)
+    if args.allow_harness_tmp and not args.replay:
+        parser.error("--allow-harness-tmp only makes sense with --replay")
 
     run_dir = args.run_dir.resolve()
     if not run_dir.is_dir():
@@ -577,6 +593,7 @@ def main(argv: list[str] | None = None) -> int:
             load_schema(schema_path),
             replay=args.replay,
             honor_override=args.honor_override,
+            allow_harness_tmp=args.allow_harness_tmp,
         )
     except ScoreError as exc:
         error_doc = {
@@ -609,6 +626,10 @@ def main(argv: list[str] | None = None) -> int:
         indent=2,
     )
     sys.stdout.write("\n")
+    if (result.get("replay") or {}).get("harness_tmp_refused"):
+        from replay import HARNESS_TMP_HINT
+
+        print(HARNESS_TMP_HINT, file=sys.stderr)
     print(result["summary"], file=sys.stderr)
     return 0 if result["ok"] else 1
 
