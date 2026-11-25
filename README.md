@@ -6,7 +6,7 @@ Dagz-Scaffold is a small open-source tool for people who pair-program with **Gro
 
 It is the sister idea to [dagztagz-hypothesis-engine](https://github.com/DagzTagz/dagztagz-hypothesis-engine). That project checks scientific claims. This one checks **coding-agent work habits**.
 
-**Status:** public **v0.1.0**. Experimental. History lives in [CHANGELOG.md](CHANGELOG.md).
+**Status:** public **v0.2.0**. Experimental. History lives in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 

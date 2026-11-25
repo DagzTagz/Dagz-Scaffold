@@ -90,10 +90,10 @@ After the fix, the reproduction above denies both git commands with `git_no_repo
 
 ## Follow-up, 2026-11-25
 
-Two related gaps were found after this fix. Both are **Open** (pull requests pending review):
+Two related gaps were found after this fix. Both are **Merged**:
 
-- The same enclosing-repository problem still affected `ship_gate.py --git-checks` and the task-file `HEAD` check, which did not go through the replay path. Fix: [Dagz-Scaffold#5](https://github.com/DagzTagz/Dagz-Scaffold/pull/5).
-- Replay still ran `from harness_tmp import ...` commands, which import a module from the checkout as you. Fix: [Dagz-Scaffold#4](https://github.com/DagzTagz/Dagz-Scaffold/pull/4), which refuses them unless you pass `--allow-harness-tmp`.
+- The same enclosing-repository problem still affected `ship_gate.py --git-checks` and the task-file `HEAD` check, which did not go through the replay path. Fix: [Dagz-Scaffold#5](https://github.com/DagzTagz/Dagz-Scaffold/pull/5), merge [`f197cda`](https://github.com/DagzTagz/Dagz-Scaffold/commit/f197cda2549a6f46fd1d6227b3c323731f843704) (fix [`81a1d26`](https://github.com/DagzTagz/Dagz-Scaffold/commit/81a1d2682a13675842399b108757581ff9a8b96d)).
+- Replay still ran `from harness_tmp import ...` commands, which import a module from the checkout as you. Fix: [Dagz-Scaffold#4](https://github.com/DagzTagz/Dagz-Scaffold/pull/4), merge [`855df49`](https://github.com/DagzTagz/Dagz-Scaffold/commit/855df499889a3f2ecc385fc50d7d6be5e030e595) (fix [`64196e3`](https://github.com/DagzTagz/Dagz-Scaffold/commit/64196e38eead310aec6e48ad95186afd04168c89)), which refuses them unless you pass `--allow-harness-tmp`.
 
 ## Credit and methodology
 

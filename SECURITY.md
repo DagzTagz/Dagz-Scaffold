@@ -10,7 +10,7 @@ Thank you for helping keep Dagz-Scaffold and its users safe. This is a DagzTagz 
 
 | Version / branch | Supported |
 |------------------|-----------|
-| `main` / latest tag (currently **0.1.0+**) | Yes — security and privacy fixes land here |
+| `main` / latest tag (currently **0.2.0**) | Yes — security and privacy fixes land here |
 | Forks / unknown snapshots | Best-effort only; report against current `main` |
 
 This project is **iterative early open source** (pre-1.0). Privacy-relevant changes go in [CHANGELOG.md](CHANGELOG.md).
