@@ -102,7 +102,13 @@ This is **off** unless you ask for it. It tries to run some of the commands in t
 
 Leave it off if you do not trust the folder, and leave it off for `examples/sample-run`. Only a small kind of `python -c` and a few `git` lookups are allowed. Dangerous-looking commands are refused and are not started. Python is started in isolated mode from the interpreter you used to launch the scorer, not from whatever path the evidence wrote down. Git is a binary outside the checkout, pointed at a temporary git directory, so the checkout's config is not used: clean filters, signature programs, hooks, fsmonitor, and external diff stay off for that command. A checkout with no `.git` of its own (for example a downloaded tarball sitting inside another project) has no git to replay against: git commands are refused and count as missing proof, and git never borrows a parent folder's repository. `git status` and `git diff` do not enter submodules. A symlinked `.git` is refused.
 
-Replayed `python -c` can still import `harness_tmp` and run that module. Read the command before you turn replay on. If replay disagrees with what the evidence claimed, that counts as missing proof.
+A `python -c` that imports `harness_tmp` is **refused by default**, even with `--replay`. That import runs a module from the checkout as you, and the allowlist cannot see what is inside it, so anyone who can drop a `harness_tmp.py` or a `harness_tmp/` folder into the checkout could otherwise run code as the person scoring. A refused import counts as missing proof, and the scorer adds `replay_harness_tmp_refused` to `fail_reasons` and prints a hint. If you have read `harness_tmp/` and trust it, add `--allow-harness-tmp`:
+
+```bash
+python3 harness/score.py --replay --allow-harness-tmp runs/YOUR-FOLDER
+```
+
+Without that flag the checkout is not on Python's import path at all during replay. A command that was red in the evidence (a pasted traceback) is never re-run, so it is not affected. If replay disagrees with what the evidence claimed, that counts as missing proof.
 
 Ship-gate does not re-run commands. Practice folders under `examples/` are never executed either. Replay happens only when you pass `--replay` to `score.py`.
 

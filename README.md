@@ -77,7 +77,7 @@ You open a second terminal, find the new folder under `runs/`, and run the inspe
 
 `ship_gate.py` is the bouncer at the door. If it prints `BLOCK`, you do not merge. A `REJECT` written into `score.json` stays a block until you pass `--honor-override` yourself and the file names who did that and why. The ship-gate also reads the folder for secret-shaped text and for a symlink standing in for one of the packet files. It does not re-run the commands.
 
-Optional `--replay` re-runs a **small allowlist** of commands from evidence on your machine. It is off by default. Python is isolated, and git is pointed at a temporary directory that does not load this checkout's config. Do not replay evidence you have not read. The longer version is in [docs/scorer.md](docs/scorer.md).
+Optional `--replay` re-runs a **small allowlist** of commands from evidence on your machine. It is off by default. Python is isolated, and git is pointed at a temporary directory that does not load this checkout's config. Commands that import `harness_tmp` are refused unless you also pass `--allow-harness-tmp`, because that import runs code from the checkout as you. Do not replay evidence you have not read. The longer version is in [docs/scorer.md](docs/scorer.md).
 
 ## Docs map
 

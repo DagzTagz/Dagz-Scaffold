@@ -218,6 +218,18 @@ class ReplayDenied(Exception):
     """Command is not executable under the PR4 sandbox. Do not spawn."""
 
 
+# Importing harness_tmp runs a module from the checkout as the scoring user.
+# The AST allowlist cannot see inside that module, so replay refuses to spawn
+# such a command unless the person scoring opts in with --allow-harness-tmp.
+HARNESS_TMP_DENIED = "harness_tmp_import_needs_--allow-harness-tmp"
+HARNESS_TMP_HINT = (
+    "replay refused to run `from harness_tmp import ...` commands. That import "
+    "runs harness_tmp code from this checkout as you, and the replay allowlist "
+    "cannot check what that code does. Read harness_tmp/ (and any harness_tmp.py) "
+    "first. If you trust it, score again with --replay --allow-harness-tmp."
+)
+
+
 class CommandPair(NamedTuple):
     command_body: str
     output_body: str | None
@@ -302,6 +314,20 @@ def replay_allowed_c(src: str) -> None:
             raise ReplayDenied(f"banned_name:{n.id}")
         if isinstance(n, ast.BinOp) and isinstance(n.op, (ast.Pow, ast.Mult)):
             _check_size(n)
+
+
+def imports_harness_tmp(src: str) -> bool:
+    """True when an allowlisted python -c payload imports harness_tmp."""
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return False
+    return any(
+        isinstance(n, ast.ImportFrom)
+        and n.module is not None
+        and (n.module == "harness_tmp" or n.module.startswith("harness_tmp."))
+        for n in ast.walk(tree)
+    )
 
 
 def command_text_from_fence(body: str) -> str:
@@ -565,10 +591,22 @@ def _c_payload(argv: list[str]) -> str:
     raise ReplayDenied("missing_-c")
 
 
-def python_spawn(argv: list[str], repo_root: Path) -> tuple[list[str], dict[str, str]]:
+def python_spawn(
+    argv: list[str], repo_root: Path, *, allow_harness_tmp: bool = False
+) -> tuple[list[str], dict[str, str]]:
+    """Spawn args for an allowlisted python -c.
+
+    The checkout goes on sys.path only when allow_harness_tmp is True. Without
+    it, a payload that imports harness_tmp is denied here, and `python -I`
+    sees no module from the checkout.
+    """
+    payload = _c_payload(argv)
+    if not allow_harness_tmp and imports_harness_tmp(payload):
+        raise ReplayDenied(HARNESS_TMP_DENIED)
     env = replay_env(repo_root)
-    env["DAGZ_REPLAY_ROOT"] = str(repo_root.resolve())
-    env["DAGZ_REPLAY_C"] = _c_payload(argv)
+    if allow_harness_tmp:
+        env["DAGZ_REPLAY_ROOT"] = str(repo_root.resolve())
+    env["DAGZ_REPLAY_C"] = payload
     spawn = [str(trusted_python()), "-I", "-S", "-c", REPLAY_STUB]
     return spawn, env
 
@@ -851,8 +889,18 @@ def _record(
     }
 
 
-def replay_evidence(evidence: str, *, repo_root: Path | None = None) -> dict:
-    """Replay command/output pairs. Denied commands never call subprocess.run."""
+def replay_evidence(
+    evidence: str,
+    *,
+    repo_root: Path | None = None,
+    allow_harness_tmp: bool = False,
+) -> dict:
+    """Replay command/output pairs. Denied commands never call subprocess.run.
+
+    With allow_harness_tmp=False (the default), a `from harness_tmp import ...`
+    command that would be spawned is denied instead (HARNESS_TMP_DENIED).
+    Historical red pairs are never spawned, so they are not affected.
+    """
     repo_root = (repo_root or REPO_ROOT).resolve()
     pairs_out: list[dict] = []
     mismatch = False
@@ -890,7 +938,9 @@ def replay_evidence(evidence: str, *, repo_root: Path | None = None) -> dict:
         try:
             try:
                 if kind == "python-c":
-                    spawn, env = python_spawn(argv, repo_root)
+                    spawn, env = python_spawn(
+                        argv, repo_root, allow_harness_tmp=allow_harness_tmp
+                    )
                 else:
                     git_dir = ReplayGitDir.open(repo_root)
                     spawn, env = git_spawn(argv, repo_root, git_dir)
@@ -958,4 +1008,7 @@ def replay_evidence(evidence: str, *, repo_root: Path | None = None) -> dict:
         "pairs": pairs_out,
         "mismatch": mismatch,
         "unreplayable": unreplayable,
+        "harness_tmp_refused": any(
+            p["reason"] == HARNESS_TMP_DENIED for p in pairs_out
+        ),
     }
